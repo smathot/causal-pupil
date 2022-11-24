@@ -26,6 +26,21 @@ import logging; logging.basicConfig(level=logging.INFO, force=True)
 
 
 """
+## Control analysis
+
+The code below should be uncommented and executed to perform the decoding after
+rejecting epochs based on BAD annotations. This also requires excluding subject
+15, who did not have any observations in one of the cells after trial
+exclusion.
+
+For the main analyses, decoding is performed on the uncleaned data, which is
+why the cells below are commented out by default.
+"""
+# EPOCHS_KWARGS['reject_by_annotation'] = True
+# SUBJECTS.remove(15)
+
+
+"""
 ## Overall decoding of full design matrix
 
 Use four-fold crossvalidation to decode each of the eight conditions. This is

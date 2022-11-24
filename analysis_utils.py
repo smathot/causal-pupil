@@ -9,6 +9,7 @@ This script belongs to the following manuscript:
 This module contains various constants and functions that are used in the main
 analysis scripts.
 """
+import multiprocessing as mp
 import mne; mne.set_log_level(False)
 import eeg_eyetracking_parser as eet
 from eeg_eyetracking_parser import braindecode_utils as bdu, \
@@ -28,13 +29,21 @@ TARGET_TRIGGER = 4
 RESPONSE_TRIGGER = 5
 N_CHANNELS = 26
 # Occipital
-LEFT_CHANNELS = 'O1', 'P3', 'P7'
-RIGHT_CHANNELS = 'O2', 'P4', 'P8'
-MIDLINE_CHANNELS = 'Oz', 'POz', 'Pz'
+LEFT_OCCIPITAL = 'O1',
+RIGHT_OCCIPITAL = 'O2',
+MIDLINE_OCCIPITAL = 'Oz',
 # Parietal
-# LEFT_CHANNELS = 'CP1',
-# RIGHT_CHANNELS = 'CP2',
-# MIDLINE_CHANNELS = 'Pz',
+LEFT_PARIETAL = 'P3', 'P7', 'CP1'
+RIGHT_PARIETAL = 'P4', 'P8', 'CP2'
+MIDLINE_PARIETAL = 'Pz', 'POz'
+# Central
+LEFT_CENTRAL = 'T7', 'C3'
+RIGHT_CENTRAL = 'T8', 'C4'
+MIDLINE_CENTRAL = 'Cz',
+# Frontal
+LEFT_FRONTAL = 'FC1', 'F3', 'F7', 'FP1'
+RIGHT_FRONTAL = 'FC2', 'F4', 'F8', 'FP2'
+MIDLINE_FRONTAL = 'Fz', 'FPz'
 FACTORS = ['inducer', 'intensity', 'valid']
 LABELS = [
     'unattended\ndim\nblue',
@@ -48,7 +57,6 @@ LABELS = [
 ]
 ALPHA = .05
 N_CONDITIONS = 8  # 3 factors with 2 levels each
-ALL_CHANNELS = LEFT_CHANNELS + RIGHT_CHANNELS + MIDLINE_CHANNELS
 FULL_FREQS = np.arange(4, 30, 1)
 DELTA_FREQS = np.arange(.5, 4, .5)
 THETA_FREQS = np.arange(4, 8, .5)
@@ -73,64 +81,72 @@ def read_subject(subject_nr):
 def get_tgt_epoch(raw, events, metadata, channels):
     return eet.autoreject_epochs(
         raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=-.1, tmax=.5,
-        metadata=metadata, picks=channels)
+        metadata=metadata, picks=channels, ar_kwargs=dict(n_jobs=8))
     
     
 def get_fix_epoch(raw, events, metadata, channels):
     return eet.autoreject_epochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=-.5, tmax=2.5,
-        metadata=metadata, picks=channels)
+        metadata=metadata, picks=channels, ar_kwargs=dict(n_jobs=8))
+    
+
+def get_morlet(epochs, freqs):
+    morlet = tfr_morlet(epochs, freqs=freqs, n_cycles=4, n_jobs=-1,
+                        return_itc=False, use_fft=True, average=False, decim=4)
+    morlet.crop(0, 2)
+    return morlet
 
 
-@fnc.memoize(persistent=True)
-def get_merged_data():
-    bigdm = DataMatrix(length=0)
-    for subject_nr in SUBJECTS:
-        print(f'Processing subject {subject_nr}')
-        raw, events, metadata = read_subject(subject_nr)
+def subject_data(subject_nr):
+    print(f'Processing subject {subject_nr}')
+    raw, events, metadata = read_subject(subject_nr)
+    dm = cnv.from_pandas(metadata)
+    for label, lch, rch, mch in (
+        ('occipital', LEFT_OCCIPITAL, RIGHT_OCCIPITAL, MIDLINE_OCCIPITAL),
+        ('parietal', LEFT_PARIETAL, RIGHT_PARIETAL, MIDLINE_PARIETAL),
+        ('central', LEFT_CENTRAL, RIGHT_CENTRAL, MIDLINE_CENTRAL),
+        ('frontal', LEFT_FRONTAL, RIGHT_FRONTAL, MIDLINE_FRONTAL)
+    ):
+        print(f'{label} channels')
         print('- left target epoch')
-        left_tgt_epoch = get_tgt_epoch(raw, events, metadata, LEFT_CHANNELS)
+        left_tgt_epoch = get_tgt_epoch(raw, events, metadata, lch)
         print('- right target epoch')
-        right_tgt_epoch = get_tgt_epoch(raw, events, metadata, RIGHT_CHANNELS)
+        right_tgt_epoch = get_tgt_epoch(raw, events, metadata, rch)
         print('- target epoch')
-        tgt_epoch = get_tgt_epoch(raw, events, metadata, ALL_CHANNELS)
+        tgt_epoch = get_tgt_epoch(raw, events, metadata, lch + rch + mch)
         print('- fix epoch')
-        fix_epoch = get_fix_epoch(raw, events, metadata, ALL_CHANNELS)
+        fix_epoch = get_fix_epoch(raw, events, metadata, lch + rch + mch)
         print('- time frequencies')
-        alpha = tfr_morlet(fix_epoch, freqs=ALPHA_FREQS, n_cycles=4, n_jobs=-1,
-                           return_itc=False, use_fft=True, average=False,
-                           decim=4)
-        alpha.crop(0, 2)
-        theta = tfr_morlet(fix_epoch, freqs=THETA_FREQS, n_cycles=4, n_jobs=-1,
-                           return_itc=False, use_fft=True, average=False,
-                           decim=4)
-        theta.crop(0, 2)
-        full = tfr_morlet(fix_epoch, freqs=FULL_FREQS, n_cycles=4, n_jobs=-1,
-                          return_itc=False, use_fft=True, average=False,
-                          decim=4)
-        full.crop(0, 2)
-        print('- pupils')
-        pupil_fix = eet.PupilEpochs(
-            raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=0, tmax=2,
-            metadata=metadata, baseline=None)
-        pupil_target = eet.PupilEpochs(
-            raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=-.05, tmax=2,
-            metadata=metadata)
-        del raw
-        dm = cnv.from_pandas(metadata)
-        dm.pupil_fix = eet.epochs_to_series(dm, pupil_fix,
-                                            baseline_trim=(-2, 2))
-        dm.pupil_target = eet.epochs_to_series(dm, pupil_target,
-                                               baseline_trim=(-2, 2))
-        dm.left_erp = eet.epochs_to_series(dm, left_tgt_epoch)
-        dm.right_erp = eet.epochs_to_series(dm, right_tgt_epoch)
-        dm.erp = eet.epochs_to_series(dm, tgt_epoch)
-        dm.alpha = eet.epochs_to_series(dm, alpha)
-        dm.alpha = ops.z(dm.alpha)
-        dm.theta = eet.epochs_to_series(dm, theta)
-        dm.theta = ops.z(dm.theta)
-        dm.tfr = eet.tfr_to_surface(dm, full)
-        dm.tfr = ops.z(dm.tfr)
+        alpha = get_morlet(fix_epoch, ALPHA_FREQS)
+        theta = get_morlet(fix_epoch, THETA_FREQS)
+        full = get_morlet(fix_epoch, FULL_FREQS)
+        dm[f'left_{label}'] = eet.epochs_to_series(dm, left_tgt_epoch)
+        dm[f'right_{label}'] = eet.epochs_to_series(dm, right_tgt_epoch)
+        dm[label] = eet.epochs_to_series(dm, tgt_epoch)
+        dm[f'alpha_{label}'] = ops.z(eet.epochs_to_series(dm, alpha))
+        dm[f'theta_{label}'] = ops.z(eet.epochs_to_series(dm, theta))
+        dm[f'tfr_{label}'] = ops.z(eet.tfr_to_surface(dm, full))
+    print('- pupils')
+    pupil_fix = eet.PupilEpochs(
+        raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=0, tmax=2,
+        metadata=metadata, baseline=None)
+    pupil_target = eet.PupilEpochs(
+        raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=-.05, tmax=2,
+        metadata=metadata)
+    del raw
+    dm.pupil_fix = eet.epochs_to_series(dm, pupil_fix,
+                                        baseline_trim=(-2, 2))
+    dm.pupil_target = eet.epochs_to_series(dm, pupil_target,
+                                           baseline_trim=(-2, 2))
+    return dm
+
+
+@fnc.memoize(persistent=True, key='merged-data')
+def get_merged_data():
+    with mp.Pool() as pool:
+        results = pool.map(subject_data, SUBJECTS)
+    bigdm = DataMatrix(length=0)
+    for dm in results:
         bigdm <<= dm
     return bigdm
 

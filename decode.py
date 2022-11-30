@@ -29,8 +29,8 @@ import logging; logging.basicConfig(level=logging.INFO, force=True)
 ## Control analysis
 
 The code below should be uncommented and executed to perform the decoding after
-rejecting epochs based on BAD annotations. This also requires excluding subject
-15, who did not have any observations in one of the cells after trial
+rejecting epochs based on BAD annotations. This also requires excluding some
+subjects who did not have any observations in one of the cells after trial
 exclusion.
 
 For the main analyses, decoding is performed on the uncleaned data, which is
@@ -38,6 +38,7 @@ why the cells below are commented out by default.
 """
 # EPOCHS_KWARGS['reject_by_annotation'] = True
 # SUBJECTS.remove(15)
+# SUBJECTS.remove(13)
 
 
 """
@@ -197,9 +198,9 @@ cross_results = {}
 for f1, f2 in it.product(FACTORS, FACTORS):
     if f1 == f2:
         continue
+    print(f'{f1} → {f2}')
     dm = DataMatrix()
     for subject_nr in SUBJECTS:
-        print(f'{f1} → {f2}, subject: {subject_nr}')
         dm <<= crossdecode_subject(subject_nr, f1, f2)
     cross_results[f'{f1} {f2}'] = dm
 
@@ -211,9 +212,9 @@ for transfer, dm in cross_results.items():
     print(transfer)
     acc = [sdm.braindecode_correct.mean
            for subject_nr, sdm in ops.split(dm.subject_nr)]
-    plt.plot(sorted(acc), 'o')
-    plt.axhline(.5)
-    plt.show()
+    # plt.plot(sorted(acc), 'o')
+    # plt.axhline(.5)
+    # plt.show()
     print(f'mean decoding accuracy: {np.mean(acc)}')
     print(ttest_1samp(acc, 0.5))
 
@@ -228,6 +229,7 @@ a specific subject and factor.
 """
 N_SUB = len(SUBJECTS)
 grand_data = np.empty((N_SUB, 3, 26))
+FACTORS = ['inducer', 'intensity', 'valid']
 for i, subject_nr in enumerate(SUBJECTS[:N_SUB]):
     print(f'ICA perturbation analysis for {subject_nr}')
     for j, factor in enumerate(FACTORS):

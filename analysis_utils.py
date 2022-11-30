@@ -16,8 +16,9 @@ from eeg_eyetracking_parser import braindecode_utils as bdu, \
     _eeg_preprocessing as epp
 import numpy as np
 from datamatrix import DataMatrix, convert as cnv, operations as ops, \
-    functional as fnc, SeriesColumn
+    functional as fnc, SeriesColumn, io
 from mne.time_frequency import tfr_morlet
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scipy.stats import mode
 import logging; logging.basicConfig(level=logging.INFO, force=True)
@@ -28,6 +29,8 @@ INTERVAL_TRIGGER = 3
 TARGET_TRIGGER = 4
 RESPONSE_TRIGGER = 5
 N_CHANNELS = 26
+CHANNEL_GROUP = 'parietal'
+CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central'
 # Occipital
 LEFT_OCCIPITAL = 'O1',
 RIGHT_OCCIPITAL = 'O2',
@@ -44,19 +47,27 @@ MIDLINE_CENTRAL = 'Cz',
 LEFT_FRONTAL = 'FC1', 'F3', 'F7', 'FP1'
 RIGHT_FRONTAL = 'FC2', 'F4', 'F8', 'FP2'
 MIDLINE_FRONTAL = 'Fz', 'FPz'
-FACTORS = ['inducer', 'intensity', 'valid']
+FACTORS = ['inducer', 'bin_pupil', 'intensity', 'valid']
 LABELS = [
-    'unattended\ndim\nblue',
-    'unattended\ndim\nred',
-    'unattended\nbright\nblue',
-    'unattended\nbright\nred',
-    'attended\ndim\nblue',
-    'attended\ndim\nred',
-    'attended\nbright\nblue',
-    'attended\nbright\nred'
+    'unattended\ndim\nsmall\nblue',
+    'unattended\ndim\nlarge\nblue',
+    'unattended\ndim\nsmall\nred',
+    'unattended\ndim\nlarge\nred',
+    'unattended\nbright\nsmall\nblue',
+    'unattended\nbright\nlarge\nblue',
+    'unattended\nbright\nsmall\nred',
+    'unattended\nbright\nlarge\nred',
+    'attended\ndim\nsmall\nblue',
+    'attended\ndim\nlarge\nblue',
+    'attended\ndim\nsmall\nred',
+    'attended\ndim\nlarge\nred',
+    'attended\nbright\nsmall\nblue',
+    'attended\nbright\nlarge\nblue',
+    'attended\nbright\nsmall\nred',
+    'attended\nbright\nlarge\nred'
 ]
 ALPHA = .05
-N_CONDITIONS = 8  # 3 factors with 2 levels each
+N_CONDITIONS = 16  # 4 factors with 2 levels each
 FULL_FREQS = np.arange(4, 30, 1)
 DELTA_FREQS = np.arange(.5, 4, .5)
 THETA_FREQS = np.arange(4, 8, .5)
@@ -70,6 +81,12 @@ DATA_FOLDER = 'data'
 EPOCHS_KWARGS = dict(tmin=-.1, tmax=.75, picks='eeg',
                      preload=True, reject_by_annotation=False,
                      baseline=None)
+# Plotting colors
+RED = '#F44336'
+BLUE = '#2196F3'
+# Plotting style
+mpl.rcParams['font.family'] = 'Roboto Condensed'
+plt.style.use('default')
 
 
 def read_subject(subject_nr):
@@ -151,6 +168,15 @@ def get_merged_data():
     return bigdm
 
 
+def add_bin_pupil(raw, events, metadata):
+    # This adds the bin_pupil pseudo-factor to the data. This requires that
+    # this has been generated already by `analyze.py`.
+    dm = io.readtxt('output/bin-pupil.csv')
+    dm = dm.subject_nr == metadata.subject_nr[0]
+    metadata.loc[16:, 'bin_pupil'] = dm.bin_pupil
+    return raw, events, metadata
+
+
 def decode_subject(subject_nr):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
@@ -158,13 +184,18 @@ def decode_subject(subject_nr):
     return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
          factors=FACTORS, epochs_kwargs=EPOCHS_KWARGS,
          trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-         n_fold=4, epochs=4)
+         n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
 
 
 def crossdecode_subject(subject_nr, from_factor, to_factor):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
+    if 'bin_pupil' in (from_factor, to_factor):
+        return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=from_factor, crossdecode_factors=to_factor,
+            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
+            window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
          factors=from_factor, crossdecode_factors=to_factor,
          epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
@@ -219,6 +250,7 @@ def statsplot(rm):
 def select_ica(raw, events, metadata, exclude_component=0):
     
     global weights_dict
+    raw, events, metadata = add_bin_pupil(raw, events, metadata)
     print(f'running ica to exclude component {exclude_component}')
     @fnc.memoize(persistent=True)
     def run_ica(raw):
@@ -241,10 +273,16 @@ def ica_perturbation_decode(subject_nr, factor):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-        n_fold=4, epochs=4)
+    if 'bin_pupil' == factor:
+        fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+            n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+    else:
+        fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+            n_fold=4, epochs=4)
     print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
     perturbation_results = {}
     for exclude_component in range(N_CHANNELS):

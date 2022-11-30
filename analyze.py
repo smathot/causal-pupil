@@ -23,6 +23,7 @@ import seaborn as sns
 from scipy.stats import linregress
 from mne.time_frequency import tfr_morlet
 from analysis_utils import *
+from pathlib import Path
 
 
 """
@@ -32,20 +33,31 @@ from analysis_utils import *
 dm = get_merged_data()
 dm = dm.practice == 'no'
 
-
 """
 ## Select channels
 
-We can select occipital, parietal, central, and frontal channels. See
+We can select occipital, parietal, central, and frontal channels groups. See
 analysis_utils for the exact channels that go into each group.
 """
-CHANNELS = 'parietal'
-dm.erp = dm[CHANNELS]
-dm.left_erp = dm[f'left_{CHANNELS}']
-dm.right_erp = dm[f'right_{CHANNELS}']
-dm.tfr = dm[f'tfr_{CHANNELS}']
-dm.alpha = dm[f'alpha_{CHANNELS}']
-dm.theta = dm[f'theta_{CHANNELS}']
+dm.erp = dm[CHANNEL_GROUP]
+dm.left_erp = dm[f'left_{CHANNEL_GROUP}']
+dm.right_erp = dm[f'right_{CHANNEL_GROUP}']
+dm.tfr = dm[f'tfr_{CHANNEL_GROUP}']
+dm.alpha = dm[f'alpha_{CHANNEL_GROUP}']
+dm.theta = dm[f'theta_{CHANNEL_GROUP}']
+
+
+"""
+Remove unused channels to reduce memory consumption.
+"""
+for group in CHANNEL_GROUPS:
+    if group == CHANNEL_GROUP:
+        continue
+    del dm[f'left_{group}']
+    del dm[f'right_{group}']
+    del dm[f'tfr_{group}']
+    del dm[f'alpha_{group}']
+    del dm[f'theta_{group}']
 
 
 """
@@ -85,6 +97,8 @@ for subject_nr, sdm in ops.split(dm.subject_nr):
         dm.bin_pupil[bdm] = binnr
     for binnr, bdm in enumerate(ops.bin_split(sdm_blue.mean_pupil, 2)):
         dm.bin_pupil[bdm] = binnr
+Path('output').mkdir(exist_ok=True)
+io.writetxt(dm[dm.subject_nr, dm.bin_pupil], 'output/bin-pupil.csv')
 
 
 """
@@ -153,32 +167,42 @@ A three-panel plot to show the inducer effect and how it correlates with the
 intensity of the red inducer.
 """
 # Main inducer effect
-plt.subplot(311)
-plt.title('a) Inducer effect during fixation interval')
-tst.plot(dm, dv='pupil_fix', hue_factor='inducer')
+plt.figure(figsize=(8, 4))
+plt.subplots_adjust(wspace=.3)
+plt.subplot(121)
+plt.title('a) Inducer effect during pre-target interval')
+plt.axvspan(250, 250 + 124, color='gray', alpha=.2)
+tst.plot(dm, dv='pupil_fix', hue_factor='inducer', hues=[BLUE, RED])
+x = np.arange(0, 501, 100)
+plt.xticks(x, x / 250)
+plt.xlabel('Time (s)')
+plt.ylabel('Pupil size (mm)')
+plt.ylim(1800, 3400)
 # Inducer effect over time
-plt.subplot(312)
+plt.subplot(122)
 plt.title('b) Stability of inducer effect within blocks')
 dm.trial_in_block = (dm.trial - 16) - 96 * (dm.block - 1)
 sns.lineplot(x='trial_in_block', y='mean_pupil', hue='inducer',
-             data=cnv.to_pandas(dm), palette=['red', 'blue'])
+             data=cnv.to_pandas(dm), palette=[RED, BLUE])
+plt.legend(title='Inducer')
 plt.xlim(1, 97)
-plt.xticks(range(1, 97, 8))
+plt.ylim(1800, 3400)
+plt.xticks(range(1, 97, 10))
 plt.xlabel('Trial in block (#)')
 plt.ylabel('Pupil size (mm)')
 # Between-subject correlation between the inducer effect and the intensity of
 # the red stimulus.
-plt.subplot(313)
-plt.title('c) Inducer effect as a function of red intensity')
-idm = ops.group(dm, by=dm.subject_nr)
-idm.inducer_effect = srs.reduce(idm.inducer_effect)
-idm.red_intensity = srs.reduce(idm.red_intensity)
-plt.axhline(0, color='black')
-sns.regplot(idm.red_intensity, idm.inducer_effect)
+# plt.subplot(313)
+# plt.title('c) Inducer effect as a function of red intensity')
+# idm = ops.group(dm, by=dm.subject_nr)
+# idm.inducer_effect = srs.reduce(idm.inducer_effect)
+# idm.red_intensity = srs.reduce(idm.red_intensity)
+# plt.axhline(0, color='black')
+# sns.regplot(idm.red_intensity, idm.inducer_effect)
 plt.savefig('svg/inducer.svg')
 plt.savefig('svg/inducer.png', dpi=300)
 plt.show()
-print(linregress(idm.red_intensity, idm.inducer_effect))
+# print(linregress(idm.red_intensity, idm.inducer_effect))
 
 
 
@@ -198,7 +222,7 @@ def erp_plot(dm, dv='lat_erp', **kwargs):
 
 
 plt.figure(figsize=(12, 16))
-plt.suptitle(f'{CHANNELS} channels')
+plt.suptitle(f'{CHANNEL_GROUP} channels')
 plt.subplot(421)
 erp_plot(dm, hue_factor='inducer', hues=['blue', 'red'])
 plt.subplot(422)
@@ -215,8 +239,8 @@ plt.subplot(427)
 erp_plot(dm, hue_factor='valid', hues=['red', 'green'])
 plt.subplot(428)
 erp_plot(dm, hue_factor='valid', hues=['red', 'green'], dv='erp')
-plt.savefig(f'svg/erp-{CHANNELS}.svg')
-plt.savefig(f'svg/erp-{CHANNELS}.png', dpi=300)
+plt.savefig(f'svg/erp-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/erp-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()
 
 
@@ -243,7 +267,7 @@ for red and blue inducers.
 """
 Y_FREQS = np.array([0, 4, 9, 25])
 plt.figure(figsize=(16, 4))
-plt.suptitle(f'{CHANNELS} channels')
+plt.suptitle(f'{CHANNEL_GROUP} channels')
 plt.subplot(131)
 tfr_red = (dm.inducer == 'red').tfr.mean
 tfr_blue = (dm.inducer == 'blue').tfr.mean
@@ -265,8 +289,8 @@ plt.title('Correct - Incorrect')
 plt.imshow(tfr_correct- tfr_incorrect, aspect='auto')
 plt.yticks(Y_FREQS, FULL_FREQS[Y_FREQS])
 plt.xticks(np.linspace(0, 125, 5), np.linspace(0, 2, 5))
-plt.savefig(f'svg/tfr-{CHANNELS}.svg')
-plt.savefig(f'svg/tfr-{CHANNELS}.png', dpi=300)
+plt.savefig(f'svg/tfr-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/tfr-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()
 
 
@@ -287,8 +311,8 @@ plt.subplot(133)
 plt.title('Accuracy')
 tst.plot(dm, dv='alpha', hue_factor='accuracy', hues=['blue', 'red'])
 plt.xticks(np.linspace(0, 125, 5), np.linspace(0, 2, 5))
-plt.savefig(f'svg/alpha-{CHANNELS}.svg')
-plt.savefig(f'svg/alpha-{CHANNELS}.png', dpi=300)
+plt.savefig(f'svg/alpha-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/alpha-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()
 
 
@@ -307,28 +331,38 @@ statsplot(rm_alpha)
 Plot the pupil response to the target as a function of the various conditions.
 """
 def pupil_plot(dm, dv='pupil_target', **kwargs):
-    tst.plot(dm, dv=dv, **kwargs)
-    x = np.linspace(5, 505, 6)
-    plt.xticks(x, (x - 5) / 250)
+    tst.plot(dm, dv=dv, legend_kwargs={'loc': 'lower left'},
+             **kwargs)
+    x = np.linspace(12, 262, 6)
+    t = [f'{s:.2}' for s in np.linspace(0, 1, 6)]
+    plt.xticks(x, t)
     plt.xlabel('Time (s)')
     if dv == 'pupil_target':
         plt.axhline(0, linestyle=':', color='black')
         plt.ylim(-500, 200)
     else:
         plt.ylim(1750, 3000)
-    # plt.xlim(0, 500)
-    plt.ylabel('Pupil size (arbitrary units)')
+    plt.xlim(0, 250)
+    plt.ylabel('Baseline-corrected pupil size (mm)')
 
-plt.figure(figsize=(12, 12))
-plt.subplots_adjust(wspace=.2)
-plt.subplot(221)
+mpl.rcParams['font.family'] = 'Roboto Condensed'
+plt.figure(figsize=(8, 4))
+plt.subplots_adjust(wspace=0)
+plt.subplot(141)
+plt.title('a) Pupil size\n(induced)')
 pupil_plot(dm, hue_factor='inducer', hues=['blue', 'red'])
-plt.subplot(222)
+plt.subplot(142)
+plt.title('b) Pupil size\n(spontanous)')
 pupil_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'])
-plt.subplot(223)
+plt.gca().get_yaxis().set_visible(False)
+plt.subplot(143)
+plt.title('c) Target intensity\n')
 pupil_plot(dm, hue_factor='intensity', hues=['gray', 'black'])
-plt.subplot(224)
+plt.gca().get_yaxis().set_visible(False)
+plt.subplot(144)
+plt.title('d) Cue validity\n')
 pupil_plot(dm, hue_factor='valid', hues=['red', 'green'])
+plt.gca().get_yaxis().set_visible(False)
 plt.savefig('svg/pupil-target-evoked.svg')
 plt.savefig('svg/pupil-target-evoked.png', dpi=300)
 plt.show()
@@ -339,14 +373,14 @@ Statistically test pupil constriction using crossvalidation. We focus only on
 the constriction period between 200 and 800 ms. Factors are ordinally coded
 with -1 and 1.
 """
-dm.pupil_window = dm.pupil_target[:, 100:200]
+dm.pupil_window = dm.pupil_target[:, 138:173]  # 500 - 700 ms post-target
 dm.ord_inducer = ops.replace(dm.inducer, {'blue': -1, 'red': 1})
 dm.ord_bin_pupil = ops.replace(dm.bin_pupil, {0: -1, 1: 1})
 dm.ord_intensity = ops.replace(dm.intensity, {100: -1, 255: 1})
 dm.ord_valid = ops.replace(dm.valid, {'no': -1, 'yes': 1})
 pupil_results = tst.find(dm,
-    'pupil_window ~ ord_inducer * ord_bin_pupil + ord_intensity * ord_valid',
-    re_formula='~ ord_inducer * ord_bin_pupil * ord_intensity * ord_valid',
+    'pupil_window ~ ord_inducer + ord_bin_pupil + ord_intensity + ord_valid',
+    re_formula='~ ord_inducer + ord_bin_pupil + ord_intensity + ord_valid',
     groups='subject_nr', winlen=5, suppress_convergence_warnings=True)
 print(tst.summarize(pupil_results))
 tst.plot(dm, dv='pupil_window', hue_factor='ord_inducer',
@@ -355,12 +389,31 @@ tst.plot(dm, dv='pupil_window', hue_factor='ord_inducer',
 """
 ## Behavioral results
 """
-sns.barplot(x='valid', y='accuracy', hue='inducer', data=dm)
-plt.ylim(.55, .7)
+plt.figure(figsize=(8, 4))
+plt.subplots_adjust(wspace=.3)
+plt.subplot(121)
+plt.title('a) Response accuracy')
+dm.correct = 100 * dm.accuracy
+sns.barplot(x='valid', y='correct', hue='inducer', palette=[RED, BLUE],
+            data=dm)
+plt.legend(title='Inducer')
+plt.xticks([0, 1], ['Valid', 'Invalid'])
+plt.xlabel('Cue')
+plt.ylabel('Accuracy (%)')
+plt.ylim(55, 70)
+plt.subplot(122)
+plt.title('b) Response time (correct trials)')
+sns.barplot(x='valid', y='response_time', hue='inducer', palette=[RED, BLUE],
+            data=dm.accuracy == 1)
+plt.legend(title='Inducer')
+plt.xticks([0, 1], ['Valid', 'Invalid'])
+plt.xlabel('Cue')
+plt.ylim(550, 750)
+plt.ylabel('Response time (ms)')
 plt.savefig('svg/behavior.png', dpi=300)
 plt.savefig('svg/behavior.svg')
 plt.show()
-acc_dm = dm[dm.subject_nr, dm.accuracy, dm.valid, dm.inducer]
+acc_dm = dm[dm.subject_nr, dm.accuracy, dm.response_time, dm.valid, dm.inducer]
 acc_dm.valid = acc_dm.valid @ (lambda a: -1 if a == 'no' else 1)
 acc_dm.inducer = acc_dm.inducer @ (lambda i: -1 if i == 'blue' else 1)
-io.writetxt(acc_dm, 'behavior.csv')
+io.writetxt(acc_dm, 'output/behavior.csv')

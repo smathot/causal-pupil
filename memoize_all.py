@@ -31,6 +31,7 @@ def memoize_subject(subject_nr):
             crossdecode_subject(subject_nr, f1, f2)
     for factor in FACTORS:
         ica_perturbation_decode(subject_nr, factor)
+    ica_perturbation_decode(subject_nr, 'dummy_factor')
     print(f'finished subject {subject_nr}')
 
 

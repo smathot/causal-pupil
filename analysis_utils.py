@@ -9,6 +9,7 @@ This script belongs to the following manuscript:
 This module contains various constants and functions that are used in the main
 analysis scripts.
 """
+import random
 import multiprocessing as mp
 import mne; mne.set_log_level(False)
 import eeg_eyetracking_parser as eet
@@ -175,6 +176,9 @@ def add_bin_pupil(raw, events, metadata):
     dm = io.readtxt('output/bin-pupil.csv')
     dm = dm.subject_nr == metadata.subject_nr[0]
     metadata.loc[16:, 'bin_pupil'] = dm.bin_pupil
+    dummy_factor = 192 * [0] + 192 * [1]
+    random.shuffle(dummy_factor)
+    metadata.loc[16:, 'dummy_factor'] = dummy_factor
     return raw, events, metadata
 
 
@@ -274,16 +278,10 @@ def ica_perturbation_decode(subject_nr, factor):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    if 'bin_pupil' == factor:
-        fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-            n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
-    else:
-        fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-            n_fold=4, epochs=4)
+    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
     perturbation_results = {}
     for exclude_component in range(N_CHANNELS):

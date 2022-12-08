@@ -12,7 +12,6 @@ This script contains all analyses except for those related to decoding.
 ## Imports and constants
 """
 import mne
-import multiprocessing as mp
 from matplotlib import pyplot as plt
 import eeg_eyetracking_parser as eet
 import time_series_test as tst
@@ -32,6 +31,7 @@ from pathlib import Path
 # get_merged_data.clear()  # Uncomment to re-merge data
 dm = get_merged_data()
 dm = dm.practice == 'no'
+
 
 """
 ## Select channels
@@ -339,9 +339,9 @@ def pupil_plot(dm, dv='pupil_target', **kwargs):
     plt.xlabel('Time (s)')
     if dv == 'pupil_target':
         plt.axhline(0, linestyle=':', color='black')
-        plt.ylim(-500, 200)
+        plt.ylim(-.6, .2)
     else:
-        plt.ylim(1750, 3000)
+        plt.ylim(2, 8)
     plt.xlim(0, 250)
     plt.ylabel('Baseline-corrected pupil size (mm)')
 

@@ -117,6 +117,7 @@ def get_morlet(epochs, freqs):
 def subject_data(subject_nr):
     print(f'Processing subject {subject_nr}')
     raw, events, metadata = read_subject(subject_nr)
+    raw['PupilSize'] = area_to_mm(raw['PupilSize'][0])
     dm = cnv.from_pandas(metadata)
     for label, lch, rch, mch in (
         ('occipital', LEFT_OCCIPITAL, RIGHT_OCCIPITAL, MIDLINE_OCCIPITAL),
@@ -296,3 +297,7 @@ def ica_perturbation_decode(subject_nr, factor):
         perturbation_results[exclude_component] = dm, weights_dict
         print(f'perturbation accuracy({exclude_component}): {dm.braindecode_correct.mean}')
     return fdm, perturbation_results
+
+
+def area_to_mm(au):
+    return -0.9904 + 0.1275 * au ** .5

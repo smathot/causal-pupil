@@ -82,39 +82,6 @@ plt.yticks(range(N_CONDITIONS), LABELS)
 
 
 """
-Test cross-decoding based on probability matrix. Here the logic is that some
-conditions are likely to be confused with each other, and therefore
-probabilities in the corresponding cells of the confusion matrix as compared
-to control combinations of conditions.
-"""
-%autoreload
-weights_transfer_intensity_inducer = [
-    (1, 'unattended\nbright\nblue', 'unattended\ndim\nred'),
-    (1, 'attended\nbright\nblue', 'attended\ndim\nred'),
-    (-1, 'attended\ndim\nblue', 'attended\nbright\nred'),
-    (-1, 'unattended\ndim\nblue', 'unattended\nbright\nred')
-]
-weights_transfer_attention_inducer = [
-    (1, 'attended\nbright\nblue', 'unattended\nbright\nred'),
-    (1, 'attended\ndim\nblue', 'unattended\ndim\nred'),
-    (-1, 'unattended\nbright\nblue', 'attended\nbright\nred'),
-    (-1, 'unattended\ndim\nblue', 'attended\ndim\nred'),
-]
-weights_transfer_attention_intensity = [
-    (1, 'attended\ndim\nblue', 'unattended\nbright\nblue'),
-    (1, 'attended\ndim\nred', 'unattended\nbright\nred'),
-    (-1, 'unattended\ndim\nblue', 'attended\nbright\nblue'),
-    (-1, 'unattended\ndim\nred', 'attended\nbright\nred'),
-]
-print('Intensity <> inducer')
-print(ttest_1samp(test_confusion(dm, weights_transfer_intensity_inducer), 0))
-print('Attention <> inducer')
-print(ttest_1samp(test_confusion(dm, weights_transfer_attention_inducer), 0))
-print('Attention <> intensity')
-print(ttest_1samp(test_confusion(dm, weights_transfer_attention_intensity), 0))
-
-
-"""
 ## Control analysis: Account for temporal proximity in decoding of inducer
 
 We decode the inducer factor by training the classfier on the first two blocks
@@ -199,10 +166,11 @@ for f1, f2 in it.product(FACTORS, FACTORS):
     if f1 == f2:
         continue
     print(f'{f1} → {f2}')
-    dm = DataMatrix()
+    key = f'{f1} ←→ {f2}' if f2 > f1 else f'{f2} ←→ {f1}'
+    if key not in cross_results:
+        cross_results[key] = DataMatrix()
     for subject_nr in SUBJECTS:
-        dm <<= crossdecode_subject(subject_nr, f1, f2)
-    cross_results[f'{f1} {f2}'] = dm
+        cross_results[key] <<= crossdecode_subject(subject_nr, f1, f2)
 
 
 """
@@ -212,9 +180,9 @@ for transfer, dm in cross_results.items():
     print(transfer)
     acc = [sdm.braindecode_correct.mean
            for subject_nr, sdm in ops.split(dm.subject_nr)]
-    # plt.plot(sorted(acc), 'o')
-    # plt.axhline(.5)
-    # plt.show()
+    plt.plot(sorted(acc), 'o')
+    plt.axhline(.5)
+    plt.show()
     print(f'mean decoding accuracy: {np.mean(acc)}')
     print(ttest_1samp(acc, 0.5))
 
@@ -228,16 +196,15 @@ are weights that indicate how much each channel contributes to decoding for
 a specific subject and factor.
 """
 N_SUB = len(SUBJECTS)
-grand_data = np.empty((N_SUB, 3, 26))
-FACTORS = ['inducer', 'intensity', 'valid']
+grand_data = np.empty((N_SUB, len(FACTORS), 26))
 for i, subject_nr in enumerate(SUBJECTS[:N_SUB]):
     print(f'ICA perturbation analysis for {subject_nr}')
     for j, factor in enumerate(FACTORS):
         fdm, perturbation_results = ica_perturbation_decode(subject_nr, factor)
         blame_dict = {}
         for component, (sdm, weights_dict) in perturbation_results.items():
-            punishment = fdm.braindecode_correct.mean - \
-                sdm.braindecode_correct.mean
+            punishment = (fdm.braindecode_correct.mean -
+                sdm.braindecode_correct.mean) / fdm.braindecode_correct.mean
             for ch, w in weights_dict.items():
                 if ch not in blame_dict:
                     blame_dict[ch] = 0
@@ -267,12 +234,16 @@ print('Inducer')
 mne.viz.plot_topomap(zdata[:, 0].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
                      cmap=COLORMAP)
-print('Intensity')
+print('Bin pupil')
 mne.viz.plot_topomap(zdata[:, 1].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
                      cmap=COLORMAP)
-print('Valid')
+print('Intensity')
 mne.viz.plot_topomap(zdata[:, 2].mean(axis=0), raw.info, size=4,
+                     names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
+                     cmap=COLORMAP)
+print('Valid')
+mne.viz.plot_topomap(zdata[:, 3].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
                      cmap=COLORMAP)
 
@@ -281,10 +252,9 @@ mne.viz.plot_topomap(zdata[:, 2].mean(axis=0), raw.info, size=4,
 Conduct a repeated measures ANOVA to test the effect of channel and factor
 on decoding weights. This is done on the non-z-scored data.
 """
-CONDITIONS = ['inducer', 'intensity']
-sdm = DataMatrix(length=len(SUBJECTS) * 3 * 26)
+sdm = DataMatrix(length=N_SUB * len(FACTORS) * 26)
 for row, (subject_nr, ch, f) in zip(
-        sdm, it.product(range(len(SUBJECTS)), range(26), range(3))):
+        sdm, it.product(range(N_SUB), range(26), range(len(FACTORS)))):
     row.subject_nr = SUBJECTS[subject_nr]
     row.channel = raw.info['ch_names'][ch]
     row.factor = FACTORS[f]
@@ -303,6 +273,7 @@ for f1, f2, channel in it.product(FACTORS, FACTORS, raw.info['ch_names']):
     fdm1 = (sdm.factor == f1) & (sdm.channel == channel)
     fdm2 = (sdm.factor == f2) & (sdm.channel == channel)
     t, p = ttest_rel(fdm1.weight, fdm2.weight)
-    if p < .05:
-        print('*')
+    if p >= .05:
+        # print('*')
+        continue
     print(f'{f1} <> {f2}, {channel}, t={t:.4f}, p={p:.4f}')

@@ -54,5 +54,5 @@ if __name__ == '__main__':
     if len(subjects) == 1:
         memoize_subject(subjects[0])
     else:
-        with mp.Pool(args.n_process) as pool:
+        with mp.Pool(int(args.n_process)) as pool:
             pool.map(memoize_subject, subjects)

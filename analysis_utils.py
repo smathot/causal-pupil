@@ -17,7 +17,7 @@ from eeg_eyetracking_parser import braindecode_utils as bdu, \
     _eeg_preprocessing as epp
 import numpy as np
 from datamatrix import DataMatrix, convert as cnv, operations as ops, \
-    functional as fnc, SeriesColumn, io
+    functional as fnc, SeriesColumn, io, MultiDimensionalColumn
 from mne.time_frequency import tfr_morlet
 import matplotlib as mpl
 from matplotlib import pyplot as plt
@@ -70,6 +70,7 @@ LABELS = [
 ALPHA = .05
 N_CONDITIONS = 16  # 4 factors with 2 levels each
 FULL_FREQS = np.arange(4, 30, 1)
+NOTCH_FREQS = np.exp(np.linspace(np.log(4), np.log(30), 15))
 DELTA_FREQS = np.arange(.5, 4, .5)
 THETA_FREQS = np.arange(4, 8, .5)
 ALPHA_FREQS = np.arange(8, 12.5, .5)
@@ -110,7 +111,8 @@ def get_fix_epoch(raw, events, metadata, channels):
 
 def get_morlet(epochs, freqs):
     morlet = tfr_morlet(epochs, freqs=freqs, n_cycles=4, n_jobs=-1,
-                        return_itc=False, use_fft=True, average=False, decim=4)
+                        return_itc=False, use_fft=True, average=False, decim=4,
+                        picks=np.arange(len(epochs.info['ch_names'])))
     morlet.crop(0, 2)
     return morlet
 
@@ -120,31 +122,33 @@ def subject_data(subject_nr):
     raw, events, metadata = read_subject(subject_nr)
     raw['PupilSize'] = area_to_mm(raw['PupilSize'][0])
     dm = cnv.from_pandas(metadata)
+    print('- eeg')
+    tgt_epoch = get_tgt_epoch(raw, events, metadata, None)
+    dm.tgt_erp = cnv.from_mne_epochs(tgt_epoch)
+    fix_epoch = get_fix_epoch(raw, events, metadata, None)
+    fix_tfr = get_morlet(fix_epoch, FULL_FREQS)
+    dm.fix_erp = cnv.from_mne_epochs(tgt_epoch)
+    dm.fix_tfr = cnv.from_mne_tfr(fix_tfr, ch_avg=True)
+    dm.fix_tfr = ops.z(dm.fix_tfr)
     for label, lch, rch, mch in (
         ('occipital', LEFT_OCCIPITAL, RIGHT_OCCIPITAL, MIDLINE_OCCIPITAL),
         ('parietal', LEFT_PARIETAL, RIGHT_PARIETAL, MIDLINE_PARIETAL),
         ('central', LEFT_CENTRAL, RIGHT_CENTRAL, MIDLINE_CENTRAL),
         ('frontal', LEFT_FRONTAL, RIGHT_FRONTAL, MIDLINE_FRONTAL)
     ):
-        print(f'{label} channels')
-        print('- left target epoch')
-        left_tgt_epoch = get_tgt_epoch(raw, events, metadata, lch)
-        print('- right target epoch')
-        right_tgt_epoch = get_tgt_epoch(raw, events, metadata, rch)
-        print('- target epoch')
-        tgt_epoch = get_tgt_epoch(raw, events, metadata, lch + rch + mch)
-        print('- fix epoch')
+        print(f'- {label}')
         fix_epoch = get_fix_epoch(raw, events, metadata, lch + rch + mch)
-        print('- time frequencies')
+        tfr = get_morlet(fix_epoch, FULL_FREQS)
         alpha = get_morlet(fix_epoch, ALPHA_FREQS)
         theta = get_morlet(fix_epoch, THETA_FREQS)
-        full = get_morlet(fix_epoch, FULL_FREQS)
-        dm[f'left_{label}'] = eet.epochs_to_series(dm, left_tgt_epoch)
-        dm[f'right_{label}'] = eet.epochs_to_series(dm, right_tgt_epoch)
-        dm[label] = eet.epochs_to_series(dm, tgt_epoch)
-        dm[f'alpha_{label}'] = ops.z(eet.epochs_to_series(dm, alpha))
-        dm[f'theta_{label}'] = ops.z(eet.epochs_to_series(dm, theta))
-        dm[f'tfr_{label}'] = ops.z(eet.tfr_to_surface(dm, full))
+        dm[f'alpha_{label}'] = cnv.from_mne_tfr(alpha, ch_avg=True, 
+                                                freq_avg=True)
+        dm[f'theta_{label}'] = cnv.from_mne_tfr(theta, ch_avg=True,
+                                                freq_avg=True)
+        dm[f'tfr_{label}'] = cnv.from_mne_tfr(tfr, ch_avg=True)
+        dm[f'alpha_{label}'] = ops.z(dm[f'alpha_{label}'])
+        dm[f'theta_{label}'] = ops.z(dm[f'theta_{label}'])
+        dm[f'tfr_{label}'] = ops.z(dm[f'tfr_{label}'])
     print('- pupils')
     pupil_fix = eet.PupilEpochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=0, tmax=2,
@@ -153,21 +157,14 @@ def subject_data(subject_nr):
         raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=-.05, tmax=2,
         metadata=metadata)
     del raw
-    dm.pupil_fix = eet.epochs_to_series(dm, pupil_fix,
-                                        baseline_trim=(-2, 2))
-    dm.pupil_target = eet.epochs_to_series(dm, pupil_target,
-                                           baseline_trim=(-2, 2))
+    dm.pupil_fix = cnv.from_mne_epochs(pupil_fix, ch_avg=True)
+    dm.pupil_target = cnv.from_mne_epochs(pupil_target, ch_avg=True)
     return dm
 
 
 @fnc.memoize(persistent=True, key='merged-data')
 def get_merged_data():
-    with mp.Pool() as pool:
-        results = pool.map(subject_data, SUBJECTS)
-    bigdm = DataMatrix(length=0)
-    for dm in results:
-        bigdm <<= dm
-    return bigdm
+    return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=8)
 
 
 def add_bin_pupil(raw, events, metadata):
@@ -196,11 +193,6 @@ def crossdecode_subject(subject_nr, from_factor, to_factor):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    if 'bin_pupil' in (from_factor, to_factor):
-        return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=from_factor, crossdecode_factors=to_factor,
-            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
-            window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
          factors=from_factor, crossdecode_factors=to_factor,
          epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
@@ -294,6 +286,39 @@ def ica_perturbation_decode(subject_nr, factor):
                     raw, events, metadata, exclude_component))
         perturbation_results[exclude_component] = dm, weights_dict
         print(f'perturbation accuracy({exclude_component}): {dm.braindecode_correct.mean}')
+    return fdm, perturbation_results
+
+
+def notch_filter(raw, events, metadata, freq):
+    
+    global weights_dict
+    raw, events, metadata = add_bin_pupil(raw, events, metadata)
+    print(f'notch-filtering frequency band: {freq}')
+    raw.notch_filter(freq, notch_widths=2, trans_bandwidth=2)
+    return raw, events, metadata
+
+
+@fnc.memoize(persistent=True)
+def freq_perturbation_decode(subject_nr, factor):
+    read_subject_kwargs = dict(subject_nr=subject_nr,
+                               saccade_annotation='BADS_SACCADE',
+                               min_sacc_size=128)
+    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+        n_fold=4, epochs=4)
+    print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
+    perturbation_results = {}
+    for freq in NOTCH_FREQS:
+        bdu.decode_subject.clear()
+        dm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+            n_fold=4, epochs=4,
+            patch_data_func=lambda raw, events, metadata: notch_filter(
+                    raw, events, metadata, freq))
+        perturbation_results[freq] = dm
+        print(f'perturbation accuracy({freq}): {dm.braindecode_correct.mean}')
     return fdm, perturbation_results
 
 

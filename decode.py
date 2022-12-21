@@ -36,9 +36,9 @@ exclusion.
 For the main analyses, decoding is performed on the uncleaned data, which is
 why the cells below are commented out by default.
 """
-# EPOCHS_KWARGS['reject_by_annotation'] = True
-# SUBJECTS.remove(15)
-# SUBJECTS.remove(13)
+EPOCHS_KWARGS['reject_by_annotation'] = True
+SUBJECTS.remove(15)
+SUBJECTS.remove(13)
 
 
 """
@@ -66,8 +66,30 @@ plot_confusion_matrix(cm_pred, LABELS, rotate_col_labels=45,
 for factor, acc in zip(['overall'] + FACTORS,
                        bdu.summarize_confusion_matrix(FACTORS, cm_pred)):
     print(f'{factor}: {acc}%')
-    
-    
+
+
+
+"""
+Statistical analysis of decoding accuracy
+"""
+acc_results = {}
+for subject_nr, sdm in ops.split(dm.subject_nr):
+    cm_pred = bdu.build_confusion_matrix(sdm.braindecode_label,
+                                         sdm.braindecode_prediction)
+    for factor, acc in zip(['overall'] + FACTORS,
+                           bdu.summarize_confusion_matrix(FACTORS, cm_pred)):
+        if factor not in acc_results:
+            acc_results[factor] = []
+        acc_results[factor].append(acc)
+for factor, results in acc_results.items():
+    if factor == 'overall':
+        chance = 6.25
+    else:
+        chance = 50
+    t, p = ttest_1samp(results, 50)
+    print(f'{factor}: {np.mean(results):.4f}% (chance: {chance}%), t = {t:.4f}, p = {p:.4f}')
+
+
 """
 Plot confusion matrix based on predicted 'probabilities'. Here, probabilities
 aren't actual probabilities but rarther continuous values from each of the
@@ -196,10 +218,10 @@ are weights that indicate how much each channel contributes to decoding for
 a specific subject and factor.
 """
 N_SUB = len(SUBJECTS)
-grand_data = np.empty((N_SUB, len(FACTORS), 26))
+grand_data = np.empty((N_SUB, len(FACTORS) + 1, 26))
 for i, subject_nr in enumerate(SUBJECTS[:N_SUB]):
     print(f'ICA perturbation analysis for {subject_nr}')
-    for j, factor in enumerate(FACTORS):
+    for j, factor in enumerate(FACTORS + ['dummy_factor']):
         fdm, perturbation_results = ica_perturbation_decode(subject_nr, factor)
         blame_dict = {}
         for component, (sdm, weights_dict) in perturbation_results.items():
@@ -224,12 +246,13 @@ MAX = .75
 COLORMAP = 'YlGnBu'
 
 # Z-score the contributions per participant so that each participant
-# contributes equally to the analysis
+# contributes equally to the analysis. We don't take the dummy factor into
+# account for z-scoring.
 zdata = grand_data.copy()
 for i in range(zdata.shape[0]):
     print(f'subject {SUBJECTS[i]}: M={zdata[i].mean()}, SD={zdata[i].std()}')
-    zdata[i] -= zdata[i].mean()
-    zdata[i] /= zdata[i].std()
+    zdata[i] -= zdata[i, :4].mean()
+    zdata[i] /= zdata[i, :4].std()
 print('Inducer')
 mne.viz.plot_topomap(zdata[:, 0].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
@@ -244,6 +267,16 @@ mne.viz.plot_topomap(zdata[:, 2].mean(axis=0), raw.info, size=4,
                      cmap=COLORMAP)
 print('Valid')
 mne.viz.plot_topomap(zdata[:, 3].mean(axis=0), raw.info, size=4,
+                     names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
+                     cmap=COLORMAP)
+
+
+"""
+Visualize the topomap for the dummy factor. This should give a more-or-less
+random distribution.
+"""
+print('Dummy factor')
+mne.viz.plot_topomap(zdata[:, 4].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
                      cmap=COLORMAP)
 
@@ -277,3 +310,8 @@ for f1, f2, channel in it.product(FACTORS, FACTORS, raw.info['ch_names']):
         # print('*')
         continue
     print(f'{f1} <> {f2}, {channel}, t={t:.4f}, p={p:.4f}')
+
+
+"""
+Frequency-band perturbation
+"""

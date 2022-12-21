@@ -29,16 +29,16 @@ def memoize_subject(subject_nr):
     for f1, f2 in it.product(FACTORS, FACTORS):
         if f1 != f2:
             crossdecode_subject(subject_nr, f1, f2)
-    for factor in FACTORS:
+    for factor in FACTORS + ['dummy_factor']:
         ica_perturbation_decode(subject_nr, factor)
-    ica_perturbation_decode(subject_nr, 'dummy_factor')
+        freq_perturbation_decode(subject_nr, factor)
     print(f'finished subject {subject_nr}')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--reject-by-annotation', action='store_true',
-                        default=False)
+                        default=True)
     parser.add_argument('--n-process', action='store', default=2)
     parser.add_argument('--subjects', action='store', default='all')
     args = parser.parse_args()

@@ -31,6 +31,15 @@ from pathlib import Path
 # get_merged_data.clear()  # Uncomment to re-merge data
 dm = get_merged_data()
 dm = dm.practice == 'no'
+dm = ops.auto_type(dm)
+
+
+"""
+Print which columns are offloaded to disk. (For debugging purposes.)
+"""
+for name, col in dm.columns:
+    if not col.loaded:
+        print(name, col.loaded)
 
 
 """
@@ -39,25 +48,18 @@ dm = dm.practice == 'no'
 We can select occipital, parietal, central, and frontal channels groups. See
 analysis_utils for the exact channels that go into each group.
 """
-dm.erp = dm[CHANNEL_GROUP]
-dm.left_erp = dm[f'left_{CHANNEL_GROUP}']
-dm.right_erp = dm[f'right_{CHANNEL_GROUP}']
+# Select channels and average them
+dm.erp = dm.tgt_erp[:, LEFT_PARIETAL + RIGHT_PARIETAL + MIDLINE_PARIETAL]
+dm.erp = dm.erp[:, ...]
+dm.left_erp = dm.tgt_erp[:, LEFT_PARIETAL]
+dm.left_erp = dm.left_erp[:, ...]
+dm.right_erp = dm.tgt_erp[:, RIGHT_PARIETAL]
+dm.right_erp = dm.right_erp[:, ...]
+# The time-frequency analyses have already been done separately for the
+# different channels groups to reduce memory size
 dm.tfr = dm[f'tfr_{CHANNEL_GROUP}']
 dm.alpha = dm[f'alpha_{CHANNEL_GROUP}']
 dm.theta = dm[f'theta_{CHANNEL_GROUP}']
-
-
-"""
-Remove unused channels to reduce memory consumption.
-"""
-for group in CHANNEL_GROUPS:
-    if group == CHANNEL_GROUP:
-        continue
-    del dm[f'left_{group}']
-    del dm[f'right_{group}']
-    del dm[f'tfr_{group}']
-    del dm[f'alpha_{group}']
-    del dm[f'theta_{group}']
 
 
 """
@@ -167,7 +169,7 @@ A three-panel plot to show the inducer effect and how it correlates with the
 intensity of the red inducer.
 """
 # Main inducer effect
-plt.figure(figsize=(8, 4))
+plt.figure(figsize=(12, 4))
 plt.subplots_adjust(wspace=.3)
 plt.subplot(121)
 plt.title('a) Inducer effect during pre-target interval')
@@ -177,7 +179,7 @@ x = np.arange(0, 501, 100)
 plt.xticks(x, x / 250)
 plt.xlabel('Time (s)')
 plt.ylabel('Pupil size (mm)')
-plt.ylim(1800, 3400)
+plt.ylim(4.5, 6.5)
 # Inducer effect over time
 plt.subplot(122)
 plt.title('b) Stability of inducer effect within blocks')
@@ -186,25 +188,13 @@ sns.lineplot(x='trial_in_block', y='mean_pupil', hue='inducer',
              data=cnv.to_pandas(dm), palette=[RED, BLUE])
 plt.legend(title='Inducer')
 plt.xlim(1, 97)
-plt.ylim(1800, 3400)
+plt.ylim(4.5, 6.5)
 plt.xticks(range(1, 97, 10))
 plt.xlabel('Trial in block (#)')
 plt.ylabel('Pupil size (mm)')
-# Between-subject correlation between the inducer effect and the intensity of
-# the red stimulus.
-# plt.subplot(313)
-# plt.title('c) Inducer effect as a function of red intensity')
-# idm = ops.group(dm, by=dm.subject_nr)
-# idm.inducer_effect = srs.reduce(idm.inducer_effect)
-# idm.red_intensity = srs.reduce(idm.red_intensity)
-# plt.axhline(0, color='black')
-# sns.regplot(idm.red_intensity, idm.inducer_effect)
 plt.savefig('svg/inducer.svg')
 plt.savefig('svg/inducer.png', dpi=300)
 plt.show()
-# print(linregress(idm.red_intensity, idm.inducer_effect))
-
-
 
 
 """

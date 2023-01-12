@@ -49,24 +49,22 @@ LEFT_FRONTAL = 'FC1', 'F3', 'F7', 'FP1'
 RIGHT_FRONTAL = 'FC2', 'F4', 'F8', 'FP2'
 MIDLINE_FRONTAL = 'Fz', 'FPz'
 FACTORS = ['inducer', 'bin_pupil', 'intensity', 'valid']
-LABELS = [
-    'unattended\ndim\nsmall\nblue',
-    'unattended\ndim\nlarge\nblue',
-    'unattended\ndim\nsmall\nred',
-    'unattended\ndim\nlarge\nred',
-    'unattended\nbright\nsmall\nblue',
-    'unattended\nbright\nlarge\nblue',
-    'unattended\nbright\nsmall\nred',
-    'unattended\nbright\nlarge\nred',
-    'attended\ndim\nsmall\nblue',
-    'attended\ndim\nlarge\nblue',
-    'attended\ndim\nsmall\nred',
-    'attended\ndim\nlarge\nred',
-    'attended\nbright\nsmall\nblue',
-    'attended\nbright\nlarge\nblue',
-    'attended\nbright\nsmall\nred',
-    'attended\nbright\nlarge\nred'
-]
+LABELS = ['00:blue:0:100:no',
+          '01:blue:0:100:yes',
+          '02:blue:0:255:no',
+          '03:blue:0:255:yes',
+          '04:blue:1:100:no',
+          '05:blue:1:100:yes',
+          '06:blue:1:255:no',
+          '07:blue:1:255:yes',
+          '08:red:0:100:no',
+          '09:red:0:100:yes',
+          '10:red:0:255:no',
+          '11:red:0:255:yes',
+          '12:red:1:100:no',
+          '13:red:1:100:yes',
+          '14:red:1:255:no',
+          '15:red:1:255:yes']
 ALPHA = .05
 N_CONDITIONS = 16  # 4 factors with 2 levels each
 FULL_FREQS = np.arange(4, 30, 1)
@@ -75,6 +73,8 @@ DELTA_FREQS = np.arange(.5, 4, .5)
 THETA_FREQS = np.arange(4, 8, .5)
 ALPHA_FREQS = np.arange(8, 12.5, .5)
 BETA_FREQS = np.arange(13, 30, .5)
+PERTURB_TIMES = [(-.1, .47),
+                 (.18, .74)]
 SUBJECTS = list(range(1, 34))
 SUBJECTS.remove(7)   # technical error
 SUBJECTS.remove(5)   # negative inducer effect
@@ -87,8 +87,8 @@ EPOCHS_KWARGS = dict(tmin=-.1, tmax=.75, picks='eeg',
 RED = '#F44336'
 BLUE = '#2196F3'
 # Plotting style
-mpl.rcParams['font.family'] = 'Roboto Condensed'
 plt.style.use('default')
+mpl.rcParams['font.family'] = 'Roboto Condensed'
 
 
 def read_subject(subject_nr):
@@ -193,6 +193,11 @@ def crossdecode_subject(subject_nr, from_factor, to_factor):
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
+    if 'bin_pupil' in (from_factor, to_factor):
+        return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=from_factor, crossdecode_factors=to_factor,
+            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
+            window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
          factors=from_factor, crossdecode_factors=to_factor,
          epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
@@ -293,8 +298,9 @@ def notch_filter(raw, events, metadata, freq):
     
     global weights_dict
     raw, events, metadata = add_bin_pupil(raw, events, metadata)
-    print(f'notch-filtering frequency band: {freq}')
-    raw.notch_filter(freq, notch_widths=2, trans_bandwidth=2)
+    width = np.exp(np.log(freq / 4))
+    print(f'notch-filtering frequency band: {freq:.2f} / {width:.2f}')
+    raw.notch_filter(freq, notch_widths=width, trans_bandwidth=width)
     return raw, events, metadata
 
 
@@ -306,7 +312,7 @@ def freq_perturbation_decode(subject_nr, factor):
     fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
         factors=factor, epochs_kwargs=EPOCHS_KWARGS,
         trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-        n_fold=4, epochs=4)
+        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
     perturbation_results = {}
     for freq in NOTCH_FREQS:
@@ -319,6 +325,31 @@ def freq_perturbation_decode(subject_nr, factor):
                     raw, events, metadata, freq))
         perturbation_results[freq] = dm
         print(f'perturbation accuracy({freq}): {dm.braindecode_correct.mean}')
+    return fdm, perturbation_results
+
+
+@fnc.memoize(persistent=True)
+def time_perturbation_decode(subject_nr, factor):
+    read_subject_kwargs = dict(subject_nr=subject_nr,
+                               saccade_annotation='BADS_SACCADE',
+                               min_sacc_size=128)
+    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
+        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+    print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
+    perturbation_results = {}
+    for tmin, tmax in PERTURB_TIMES:
+        epochs_kwargs = EPOCHS_KWARGS.copy()
+        epochs_kwargs['tmin'] = tmin
+        epochs_kwargs['tmax'] = tmax
+        bdu.decode_subject.clear()
+        dm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
+            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
+            trigger=TARGET_TRIGGER, window_stride=1, window_size=130,
+            n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+        perturbation_results[tmin] = dm
+        print(f'perturbation accuracy({tmin}-{tmax}): {dm.braindecode_correct.mean}')
     return fdm, perturbation_results
 
 

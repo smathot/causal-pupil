@@ -204,11 +204,12 @@ Plot target-locked ERPs as a function of various factors.
 """
 def erp_plot(dm, dv='lat_erp', **kwargs):
     tst.plot(dm, dv=dv, **kwargs)
-    plt.gca().invert_yaxis()
+    # plt.gca().invert_yaxis()
     plt.xticks(np.arange(25, 150, 25), np.arange(0, 500, 100))
     plt.axvline(25, color='black', linestyle=':')
     plt.axhline(0, color='black', linestyle=':')
     plt.xlabel('Time (ms)')
+    # plt.ylim(-4.5e-6, 1.5e-6)
 
 
 plt.figure(figsize=(12, 16))
@@ -233,21 +234,52 @@ plt.savefig(f'svg/erp-{CHANNEL_GROUP}.svg')
 plt.savefig(f'svg/erp-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()
 
+"""
+Only lateralized ERPs in a horizontal arrangement of plots
+"""
+plt.figure(figsize=(12, 6))
+plt.subplots_adjust(wspace=0, hspace=0)
+plt.suptitle(f'{CHANNEL_GROUP} channels')
+plt.subplot(241)
+erp_plot(dm.valid == 'no', hue_factor='inducer', hues=['blue', 'red'])
+plt.subplot(242)
+erp_plot(dm.valid == 'no', hue_factor='bin_pupil', hues=['purple', 'green'])
+plt.subplot(243)
+erp_plot(dm.valid == 'no', hue_factor='intensity', hues=['gray', 'black'])
+plt.subplot(244)
+erp_plot(dm, hue_factor='valid', hues=['red', 'green'])
+plt.subplot(245)
+erp_plot(dm.valid == 'yes', hue_factor='inducer', hues=['blue', 'red'])
+plt.subplot(246)
+erp_plot(dm.valid == 'yes', hue_factor='bin_pupil', hues=['purple', 'green'])
+plt.subplot(247)
+erp_plot(dm.valid == 'yes', hue_factor='intensity', hues=['gray', 'black'])
+plt.savefig(f'svg/laterp-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/laterp-{CHANNEL_GROUP}.png', dpi=300)
+plt.show()
+
 
 """
 Statistics
 """
-rm_erp = tst.lmer_series(
-    dm, formula='erp ~ inducer + bin_pupil + intensity + valid',
-    groups='subject_nr', winlen=2)
+# rm_erp = tst.lmer_series(
+#     dm, formula='erp ~ inducer + bin_pupil + intensity + valid',
+#     groups='subject_nr', winlen=2)
 rm_laterp = tst.lmer_series(
     dm, formula='lat_erp ~ inducer + bin_pupil + intensity + valid',
     groups='subject_nr', winlen=2)
-statsplot(rm_erp)
-plt.show()
+rm_laterp = tst.lmer_series(
+    dm, formula='lat_erp ~ inducer',
+    groups='subject_nr', winlen=2)
+# statsplot(rm_erp)
+# plt.show()
 statsplot(rm_laterp)
 plt.show()
 
+hits = tst.lmer_permutation_test(
+    dm, formula='lat_erp ~ inducer + bin_pupil + intensity + valid',
+    groups='subject_nr', winlen=2)
+print(hits)
 
 """
 ## Time-frequency analysis

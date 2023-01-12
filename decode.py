@@ -24,18 +24,6 @@ from scipy.stats import ttest_1samp, ttest_rel
 import pingouin as pg
 import logging; logging.basicConfig(level=logging.INFO, force=True)
 
-
-"""
-## Control analysis
-
-The code below should be uncommented and executed to perform the decoding after
-rejecting epochs based on BAD annotations. This also requires excluding some
-subjects who did not have any observations in one of the cells after trial
-exclusion.
-
-For the main analyses, decoding is performed on the uncleaned data, which is
-why the cells below are commented out by default.
-"""
 EPOCHS_KWARGS['reject_by_annotation'] = True
 SUBJECTS.remove(15)
 SUBJECTS.remove(13)
@@ -66,7 +54,8 @@ plot_confusion_matrix(cm_pred, LABELS, rotate_col_labels=45,
 for factor, acc in zip(['overall'] + FACTORS,
                        bdu.summarize_confusion_matrix(FACTORS, cm_pred)):
     print(f'{factor}: {acc}%')
-
+plt.savefig('svg/decoding-matrix.svg')
+plt.show()
 
 
 """
@@ -81,13 +70,36 @@ for subject_nr, sdm in ops.split(dm.subject_nr):
         if factor not in acc_results:
             acc_results[factor] = []
         acc_results[factor].append(acc)
-for factor, results in acc_results.items():
+        
+x = np.arange(0, 5)
+mean = np.empty(5)
+err = np.empty(5)
+for i, (factor, results) in enumerate(acc_results.items()):
     if factor == 'overall':
         chance = 6.25
     else:
         chance = 50
     t, p = ttest_1samp(results, 50)
+    mean[i] = np.mean(results)
+    err[i] = 1.96 * np.std(results) / np.sqrt(len(results))
     print(f'{factor}: {np.mean(results):.4f}% (chance: {chance}%), t = {t:.4f}, p = {p:.4f}')
+    
+    
+"""
+Visualize decoding accuracy
+"""
+plt.figure(figsize=(4, 4))
+plt.axhline(6.25, xmin=0, xmax=.22, linestyle=':', color='black')
+plt.axhline(50, xmin=.22, xmax=1, linestyle=':', color='black')
+plt.bar(x, mean, color='gray')
+plt.errorbar(x, mean, yerr=err, linestyle='', color='black')
+plt.ylim(0, 100)
+plt.ylabel('Decoding accuracy (%)')
+plt.xticks(x, ['Overall', 'Induced Pupil Size', 'Spontaneous Pupil Size',
+               'Stimulus Intensity', 'Covert Visual Attention'],
+           rotation=90)
+plt.savefig('svg/decoding-barplot.svg')
+plt.show()
 
 
 """
@@ -256,19 +268,27 @@ for i in range(zdata.shape[0]):
 print('Inducer')
 mne.viz.plot_topomap(zdata[:, 0].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
-                     cmap=COLORMAP)
+                     cmap=COLORMAP, show=False)
+plt.savefig('svg/topomap-inducer.svg')
+plt.show()
 print('Bin pupil')
 mne.viz.plot_topomap(zdata[:, 1].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
-                     cmap=COLORMAP)
+                     cmap=COLORMAP, show=False)
+plt.savefig('svg/topomap-bin_pupil.svg')
+plt.show()
 print('Intensity')
 mne.viz.plot_topomap(zdata[:, 2].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
-                     cmap=COLORMAP)
+                     cmap=COLORMAP, show=False)
+plt.savefig('svg/topomap-intensity.svg')
+plt.show()
 print('Valid')
 mne.viz.plot_topomap(zdata[:, 3].mean(axis=0), raw.info, size=4,
                      names=raw.info['ch_names'], vmin=-MAX, vmax=MAX,
-                     cmap=COLORMAP)
+                     cmap=COLORMAP, show=False)
+plt.savefig('svg/topomap-valid.svg')
+plt.show()
 
 
 """
@@ -315,3 +335,56 @@ for f1, f2, channel in it.product(FACTORS, FACTORS, raw.info['ch_names']):
 """
 Frequency-band perturbation
 """
+N_SUB = len(SUBJECTS)
+grand_data = np.empty((N_SUB, len(FACTORS) + 1, len(NOTCH_FREQS)))
+for i, subject_nr in enumerate(SUBJECTS[:N_SUB]):
+    print(f'Frequency perturbation analysis for {subject_nr}')
+    for j, factor in enumerate(FACTORS + ['dummy_factor']):
+        fdm, perturbation_results = freq_perturbation_decode(subject_nr, factor)
+        gm = fdm.braindecode_correct.mean
+        data = np.array([r.braindecode_correct.mean
+                        for r in perturbation_results.values()])
+        data = (data - gm) / gm
+        grand_data[i, j] = data
+
+
+"""
+Visualize the frequency-band perturbation
+"""
+# Z-score the contributions per participant so that each participant
+# contributes equally to the analysis. We don't take the dummy factor into
+# account for z-scoring.
+zdata = grand_data.copy()
+for i in range(zdata.shape[0]):
+    print(f'subject {SUBJECTS[i]}: M={zdata[i].mean()}, SD={zdata[i].std()}')
+    zdata[i] -= zdata[i, :4].mean()
+    zdata[i] /= zdata[i, :4].std()
+plt.axhline(0, linestyle=':', color='black')
+for j, factor in enumerate(FACTORS):
+    mean = zdata[:, j, :].mean(axis=0)
+    err = 1.96 * zdata[:, j, :].std() / np.sqrt(len(SUBJECTS))
+    plt.fill_between(NOTCH_FREQS, mean - err, mean + err, alpha=.2)
+    plt.plot(NOTCH_FREQS, mean, '-', label=factor)
+plt.legend()
+
+
+"""
+Conduct a repeated measures ANOVA to test the effect of frequency band and
+factor on decoding weights. This is done on the non-z-scored data.
+"""
+sdm = DataMatrix(length=N_SUB * len(FACTORS) * len(NOTCH_FREQS))
+for row, (subject_nr, freq, f) in zip(
+        sdm, it.product(range(N_SUB), range(len(NOTCH_FREQS)),
+                        range(len(FACTORS)))):
+    row.subject_nr = SUBJECTS[subject_nr]
+    row.freqs = NOTCH_FREQS[freq]
+    row.factor = FACTORS[f]
+    row.weight = grand_data[subject_nr, f, freq]
+aov = pg.rm_anova(dv='weight', within=['factor', 'freqs'],
+                  subject='subject_nr', data=sdm)
+print(aov)
+for factor, fdm in ops.split(sdm.factor):
+    print(f'Simple effect for {factor}')
+    aov = pg.rm_anova(dv='weight', within=['freqs'], subject='subject_nr',
+                      data=fdm)
+    print(aov)

@@ -333,7 +333,7 @@ for f1, f2, channel in it.product(FACTORS, FACTORS, raw.info['ch_names']):
 
 
 """
-Frequency-band perturbation
+## Frequency-band perturbation
 """
 N_SUB = len(SUBJECTS)
 grand_data = np.empty((N_SUB, len(FACTORS) + 1, len(NOTCH_FREQS)))
@@ -351,21 +351,32 @@ for i, subject_nr in enumerate(SUBJECTS[:N_SUB]):
 """
 Visualize the frequency-band perturbation
 """
-# Z-score the contributions per participant so that each participant
-# contributes equally to the analysis. We don't take the dummy factor into
-# account for z-scoring.
-zdata = grand_data.copy()
-for i in range(zdata.shape[0]):
-    print(f'subject {SUBJECTS[i]}: M={zdata[i].mean()}, SD={zdata[i].std()}')
-    zdata[i] -= zdata[i, :4].mean()
-    zdata[i] /= zdata[i, :4].std()
+from scipy.interpolate import make_interp_spline
+
+plt.figure(figsize=(8, 4))
 plt.axhline(0, linestyle=':', color='black')
+x = np.linspace(NOTCH_FREQS.min(), NOTCH_FREQS.max(), 100)
+zdata = -100 * grand_data.copy()
+grand_mean = zdata.mean()
+for i in range(len(SUBJECTS)):
+    zdata[i] -= zdata[i].mean()
+zdata += grand_mean
 for j, factor in enumerate(FACTORS):
     mean = zdata[:, j, :].mean(axis=0)
-    err = 1.96 * zdata[:, j, :].std() / np.sqrt(len(SUBJECTS))
-    plt.fill_between(NOTCH_FREQS, mean - err, mean + err, alpha=.2)
-    plt.plot(NOTCH_FREQS, mean, '-', label=factor)
+    err = zdata[:, j, :].std(axis=0) / np.sqrt(len(SUBJECTS))
+    spline_y = make_interp_spline(NOTCH_FREQS, mean)(x)
+    spline_err = make_interp_spline(NOTCH_FREQS, err)(x)
+    plt.fill_between(x, spline_y - spline_err, spline_y + spline_err, alpha=.2,
+                     label=factor, color=FACTOR_COLORS[factor])
+    plt.plot(NOTCH_FREQS, mean, 'o', color=FACTOR_COLORS[factor])
+    plt.plot(x, spline_y, '-', color=FACTOR_COLORS[factor])
+plt.xlim(NOTCH_FREQS.min(), NOTCH_FREQS.max())
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Decoding contribution (%)')
+plt.xticks([4, 8, 13, 29])
 plt.legend()
+plt.savefig('svg/decoding-frequencies.svg')
+plt.show()
 
 
 """

@@ -1,13 +1,13 @@
 """
-# Inducer-intensity-calibration analysis
+# Luminance calibration analysis
 
 This script belongs to the following manuscript:
 
 - Mathôt, Berberyan, Büchel, Ruuskanen, Vilotjević, & Kruijne (in prep.)
   *Causal effects of pupil size on visual ERPs*
 
-This script analyzes pupil constriction in response to the red and blue
-inducers at the end of the inducer calibration.
+- Mathôt, Berberyan, Büchel, Ruuskanen, Vilotjević, & Kruijne (in prep.)
+  *Causal effects of pupil size on visual processing*
 
 
 ## Imports and constants

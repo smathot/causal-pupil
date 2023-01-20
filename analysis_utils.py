@@ -16,6 +16,7 @@ import eeg_eyetracking_parser as eet
 from eeg_eyetracking_parser import braindecode_utils as bdu, \
     _eeg_preprocessing as epp
 import numpy as np
+import time_series_test as tst
 from datamatrix import DataMatrix, convert as cnv, operations as ops, \
     functional as fnc, SeriesColumn, io, MultiDimensionalColumn
 from mne.time_frequency import tfr_morlet
@@ -24,6 +25,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import mode
 import logging; logging.basicConfig(level=logging.INFO, force=True)
 
+DATA_CHECKPOINT = 'checkpoints/18012023.dm'
 FIXATION_TRIGGER = 1
 CUE_TRIGGER = 2
 INTERVAL_TRIGGER = 3
@@ -86,6 +88,12 @@ EPOCHS_KWARGS = dict(tmin=-.1, tmax=.75, picks='eeg',
 # Plotting colors
 RED = '#F44336'
 BLUE = '#2196F3'
+FACTOR_COLORS = {
+    'inducer': '#B71C1C',
+    'bin_pupil': '#4A148C',
+    'intensity': '#263238',
+    'valid': '#1B5E20'
+}
 # Plotting style
 plt.style.use('default')
 mpl.rcParams['font.family'] = 'Roboto Condensed'
@@ -97,23 +105,26 @@ def read_subject(subject_nr):
                             min_sacc_size=128)
 
 
-def get_tgt_epoch(raw, events, metadata, channels):
+def get_tgt_epoch(raw, events, metadata, channels=None, tmin=-.1, tmax=.5,
+                  baseline=(None, 0)):
     return eet.autoreject_epochs(
-        raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=-.1, tmax=.5,
-        metadata=metadata, picks=channels, ar_kwargs=dict(n_jobs=8))
+        raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=tmin, tmax=tmax,
+        metadata=metadata, picks=channels, baseline=baseline,
+        ar_kwargs=dict(n_jobs=8))
     
     
-def get_fix_epoch(raw, events, metadata, channels):
+def get_fix_epoch(raw, events, metadata, channels=None):
     return eet.autoreject_epochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=-.5, tmax=2.5,
         metadata=metadata, picks=channels, ar_kwargs=dict(n_jobs=8))
     
 
-def get_morlet(epochs, freqs):
-    morlet = tfr_morlet(epochs, freqs=freqs, n_cycles=4, n_jobs=-1,
-                        return_itc=False, use_fft=True, average=False, decim=4,
+def get_morlet(epochs, freqs, crop=(0, 2), decim=8, n_cycles=2):
+    morlet = tfr_morlet(epochs, freqs=freqs, n_cycles=n_cycles, n_jobs=-1,
+                        return_itc=False, use_fft=True, average=False,
+                        decim=decim,
                         picks=np.arange(len(epochs.info['ch_names'])))
-    morlet.crop(0, 2)
+    morlet.crop(*crop)
     return morlet
 
 
@@ -123,32 +134,18 @@ def subject_data(subject_nr):
     raw['PupilSize'] = area_to_mm(raw['PupilSize'][0])
     dm = cnv.from_pandas(metadata)
     print('- eeg')
-    tgt_epoch = get_tgt_epoch(raw, events, metadata, None)
+    tgt_epoch = get_tgt_epoch(raw, events, metadata)
     dm.tgt_erp = cnv.from_mne_epochs(tgt_epoch)
-    fix_epoch = get_fix_epoch(raw, events, metadata, None)
+    tgt_tfr = get_morlet(
+        get_tgt_epoch(raw, events, metadata, baseline=None, tmax=1),
+        FULL_FREQS, crop=(0, .5), decim=4)
+    dm.tgt_tfr = cnv.from_mne_tfr(tgt_tfr)
+    dm.tgt_tfr = ops.z(dm.tgt_tfr)
+    fix_epoch = get_fix_epoch(raw, events, metadata)
     fix_tfr = get_morlet(fix_epoch, FULL_FREQS)
     dm.fix_erp = cnv.from_mne_epochs(tgt_epoch)
-    dm.fix_tfr = cnv.from_mne_tfr(fix_tfr, ch_avg=True)
+    dm.fix_tfr = cnv.from_mne_tfr(fix_tfr)
     dm.fix_tfr = ops.z(dm.fix_tfr)
-    for label, lch, rch, mch in (
-        ('occipital', LEFT_OCCIPITAL, RIGHT_OCCIPITAL, MIDLINE_OCCIPITAL),
-        ('parietal', LEFT_PARIETAL, RIGHT_PARIETAL, MIDLINE_PARIETAL),
-        ('central', LEFT_CENTRAL, RIGHT_CENTRAL, MIDLINE_CENTRAL),
-        ('frontal', LEFT_FRONTAL, RIGHT_FRONTAL, MIDLINE_FRONTAL)
-    ):
-        print(f'- {label}')
-        fix_epoch = get_fix_epoch(raw, events, metadata, lch + rch + mch)
-        tfr = get_morlet(fix_epoch, FULL_FREQS)
-        alpha = get_morlet(fix_epoch, ALPHA_FREQS)
-        theta = get_morlet(fix_epoch, THETA_FREQS)
-        dm[f'alpha_{label}'] = cnv.from_mne_tfr(alpha, ch_avg=True, 
-                                                freq_avg=True)
-        dm[f'theta_{label}'] = cnv.from_mne_tfr(theta, ch_avg=True,
-                                                freq_avg=True)
-        dm[f'tfr_{label}'] = cnv.from_mne_tfr(tfr, ch_avg=True)
-        dm[f'alpha_{label}'] = ops.z(dm[f'alpha_{label}'])
-        dm[f'theta_{label}'] = ops.z(dm[f'theta_{label}'])
-        dm[f'tfr_{label}'] = ops.z(dm[f'tfr_{label}'])
     print('- pupils')
     pupil_fix = eet.PupilEpochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=0, tmax=2,
@@ -164,7 +161,7 @@ def subject_data(subject_nr):
 
 @fnc.memoize(persistent=True, key='merged-data')
 def get_merged_data():
-    return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=8)
+    return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=3)
 
 
 def add_bin_pupil(raw, events, metadata):
@@ -355,3 +352,28 @@ def time_perturbation_decode(subject_nr, factor):
 
 def area_to_mm(au):
     return -0.9904 + 0.1275 * au ** .5
+
+
+def pupil_plot(dm, dv='pupil_target', **kwargs):
+    tst.plot(dm, dv=dv, legend_kwargs={'loc': 'lower left'},
+             **kwargs)
+    x = np.linspace(12, 262, 6)
+    t = [f'{int(s)}' for s in np.linspace(0, 1000, 6)]
+    plt.xticks(x, t)
+    plt.xlabel('Time (ms)')
+    if dv == 'pupil_target':
+        plt.axhline(0, linestyle=':', color='black')
+        plt.ylim(-.6, .2)
+    else:
+        plt.ylim(2, 8)
+    plt.xlim(0, 250)
+    plt.ylabel('Baseline-corrected pupil size (mm)')
+
+
+def erp_plot(dm, dv='lat_erp', **kwargs):
+    tst.plot(dm, dv=dv, **kwargs)
+    plt.xticks(np.arange(25, 150, 25), np.arange(0, 500, 100))
+    plt.axvline(25, color='black', linestyle=':')
+    plt.axhline(0, color='black', linestyle=':')
+    plt.xlabel('Time (ms)')
+    # plt.ylim(-4.5e-6, 1.5e-6)

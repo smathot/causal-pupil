@@ -4,9 +4,6 @@
 This script belongs to the following manuscript:
 
 - Mathôt, Berberyan, Büchel, Ruuskanen, Vilotjević, & Kruijne (in prep.)
-  *Causal effects of pupil size on visual ERPs*
-
-- Mathôt, Berberyan, Büchel, Ruuskanen, Vilotjević, & Kruijne (in prep.)
   *Causal effects of pupil size on visual processing*
 
 

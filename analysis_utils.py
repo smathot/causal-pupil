@@ -143,7 +143,7 @@ def subject_data(subject_nr):
     dm.tgt_tfr = ops.z(dm.tgt_tfr)
     fix_epoch = get_fix_epoch(raw, events, metadata)
     fix_tfr = get_morlet(fix_epoch, FULL_FREQS)
-    dm.fix_erp = cnv.from_mne_epochs(tgt_epoch)
+    dm.fix_erp = cnv.from_mne_epochs(fix_epoch)
     dm.fix_tfr = cnv.from_mne_tfr(fix_tfr)
     dm.fix_tfr = ops.z(dm.fix_tfr)
     print('- pupils')

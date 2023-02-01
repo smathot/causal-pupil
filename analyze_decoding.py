@@ -380,6 +380,27 @@ plt.show()
 
 
 """
+Visualize the frequency-band perturbations for individual subjects
+"""
+plt.title('Induced pupil size')
+plt.axhline(0, linestyle='-', color='black')
+plt.plot(NOTCH_FREQS, zdata[:, 0].T, 'o:', color='black', alpha=.2)
+plt.show()
+plt.title('Spontaneous pupil size')
+plt.axhline(0, linestyle='-', color='black')
+plt.plot(NOTCH_FREQS, zdata[:,1].T, 'o-', color='black', alpha=.2)
+plt.show()
+plt.title('Stimulus intensity')
+plt.axhline(0, linestyle='-', color='black')
+plt.plot(NOTCH_FREQS, zdata[:,2].T, 'o-', color='black', alpha=.2)
+plt.show()
+plt.title('Covert visual attention')
+plt.axhline(0, linestyle='-', color='black')
+plt.plot(NOTCH_FREQS, zdata[:,3].T, 'o-', color='black', alpha=.2)
+plt.show()
+
+
+"""
 Conduct a repeated measures ANOVA to test the effect of frequency band and
 factor on decoding weights. This is done on the non-z-scored data.
 """

@@ -86,8 +86,8 @@ EPOCHS_KWARGS = dict(tmin=-.1, tmax=.75, picks='eeg',
                      preload=True, reject_by_annotation=False,
                      baseline=None)
 # Plotting colors
-RED = '#F44336'
-BLUE = '#2196F3'
+RED = 'red'
+BLUE = 'blue'
 FACTOR_COLORS = {
     'inducer': '#B71C1C',
     'bin_pupil': '#4A148C',

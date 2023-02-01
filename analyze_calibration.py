@@ -39,6 +39,7 @@ Preprocessing.
 """
 dm = dm.subject_nr == set(SUBJECTS)
 dm = dm.trial == 0
+dm.ptrace_stimulus @= area_to_mm
 dm.constriction = srs.baseline(dm.ptrace_stimulus, dm.ptrace_stimulus, 0, 5)
 dm.pupil = dm.ptrace_stimulus
 for row in dm:
@@ -50,7 +51,7 @@ Visualize results
 """
 plt.figure(figsize=(5, 4))
 tst.plot(dm.trialid >= 38, dv='pupil', hue_factor='color',
-         hues=[BLUE, RED])
+         hues=['blue', 'red'])
 xdata = np.linspace(0, 250, 6)
 tdata = xdata / 100
 plt.xticks(xdata, tdata)

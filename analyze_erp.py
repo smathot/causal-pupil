@@ -68,6 +68,32 @@ plt.show()
 
 
 """
+Contra vs ipsilateral ERPs
+"""
+plt.figure(figsize=(12, 16))
+plt.suptitle(f'{CHANNEL_GROUP} channels')
+plt.subplot(421)
+erp_plot(dm, hue_factor='inducer', hues=['blue', 'red'], dv='contra_erp')
+plt.subplot(422)
+erp_plot(dm, hue_factor='inducer', hues=['blue', 'red'], dv='ipsi_erp')
+plt.subplot(423)
+erp_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'], dv='contra_erp')
+plt.subplot(424)
+erp_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'], dv='ipsi_erp')
+plt.subplot(425)
+erp_plot(dm, hue_factor='intensity', hues=['gray', 'black'], dv='contra_erp')
+plt.subplot(426)
+erp_plot(dm, hue_factor='intensity', hues=['gray', 'black'], dv='ipsi_erp')
+plt.subplot(427)
+erp_plot(dm, hue_factor='valid', hues=['red', 'green'], dv='contra_erp')
+plt.subplot(428)
+erp_plot(dm, hue_factor='valid', hues=['red', 'green'], dv='ipsi_erp')
+plt.savefig(f'svg/contra-ipsi-erp-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/contra-ipsi-erp-{CHANNEL_GROUP}.png', dpi=300)
+plt.show()
+
+
+"""
 ## Cluster-based permutation tests
 
 Warning: This analysis takes very long to run!

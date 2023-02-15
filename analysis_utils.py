@@ -25,15 +25,12 @@ from matplotlib import pyplot as plt
 from scipy.stats import mode
 import logging; logging.basicConfig(level=logging.INFO, force=True)
 
-DATA_CHECKPOINT = 'checkpoints/18012023.dm'
 FIXATION_TRIGGER = 1
 CUE_TRIGGER = 2
 INTERVAL_TRIGGER = 3
 TARGET_TRIGGER = 4
 RESPONSE_TRIGGER = 5
 N_CHANNELS = 26
-CHANNEL_GROUP = 'parietal'
-CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central'
 # Occipital
 LEFT_OCCIPITAL = 'O1',
 RIGHT_OCCIPITAL = 'O2',
@@ -50,6 +47,36 @@ MIDLINE_CENTRAL = 'Cz',
 LEFT_FRONTAL = 'FC1', 'F3', 'F7', 'FP1'
 RIGHT_FRONTAL = 'FC2', 'F4', 'F8', 'FP2'
 MIDLINE_FRONTAL = 'Fz', 'FPz'
+# Only CP1 and CP2, which were the best channels
+LEFT_CP = 'CP1',
+RIGHT_CP = 'CP2',
+MIDLINE_CP = tuple()
+# Select a channel group for further processing
+CHANNEL_GROUP = 'CP'
+CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central', 'CP'
+if CHANNEL_GROUP == 'parietal':
+    LEFT_CHANNELS = LEFT_PARIETAL
+    RIGHT_CHANNELS = RIGHT_PARIETAL
+    MIDLINE_CHANNELS = MIDLINE_PARIETAL
+elif CHANNEL_GROUP == 'occipital':
+    LEFT_CHANNELS = LEFT_OCCIPITAL
+    RIGHT_CHANNELS = RIGHT_OCCIPITAL
+    MIDLINE_CHANNELS = MIDLINE_OCCIPITAL
+elif CHANNEL_GROUP == 'frontal':
+    LEFT_CHANNELS = LEFT_FRONTAL
+    RIGHT_CHANNELS = RIGHT_FRONTAL
+    MIDLINE_CHANNELS = MIDLINE_FRONTAL
+elif CHANNEL_GROUP == 'central':
+    LEFT_CHANNELS = LEFT_CENTRAL
+    RIGHT_CHANNELS = RIGHT_CENTRAL
+    MIDLINE_CHANNELS = MIDLINE_CENTRAL
+elif CHANNEL_GROUP == 'CP':
+    LEFT_CHANNELS = LEFT_CP
+    RIGHT_CHANNELS = RIGHT_CP
+    MIDLINE_CHANNELS = MIDLINE_CP
+else:
+    raise ValueError(f'Invalid channel group: {CHANNEL_GROUP}')
+ALL_CHANNELS = LEFT_CHANNELS + RIGHT_CHANNELS + MIDLINE_CHANNELS
 FACTORS = ['inducer', 'bin_pupil', 'intensity', 'valid']
 LABELS = ['00:blue:0:100:no',
           '01:blue:0:100:yes',
@@ -94,9 +121,16 @@ FACTOR_COLORS = {
     'intensity': '#263238',
     'valid': '#1B5E20'
 }
+# TFR plotting parameters
+Y_FREQS = np.array([0, 4, 9, 25])
+VMIN = -.2
+VMAX = .2
+CMAP = 'coolwarm'
 # Plotting style
 plt.style.use('default')
 mpl.rcParams['font.family'] = 'Roboto Condensed'
+# DATA_CHECKPOINT = 'checkpoints/18012023.dm'
+DATA_CHECKPOINT = f'checkpoints/15022023-{CHANNEL_GROUP}.dm'
 
 
 def read_subject(subject_nr):
@@ -377,3 +411,48 @@ def erp_plot(dm, dv='lat_erp', **kwargs):
     plt.axhline(0, color='black', linestyle=':')
     plt.xlabel('Time (ms)')
     # plt.ylim(-4.5e-6, 1.5e-6)
+
+
+def tfr_plot(dv):
+    plt.figure(figsize=(12, 4))
+    plt.subplots_adjust(wspace=0)
+    plt.subplot(141)
+    tfr_red = (dm.inducer == 'red')[dv][...]
+    tfr_blue = (dm.inducer == 'blue')[dv][...]
+    plt.title('a) Induced Pupil Size (Large - Small)')
+    plt.imshow(tfr_red - tfr_blue, aspect='auto', vmin=VMIN, vmax=VMAX,
+               cmap=CMAP, interpolation='bicubic')
+    plt.yticks(Y_FREQS, FULL_FREQS[Y_FREQS])
+    plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+    plt.xlabel('Time (ms)')
+    plt.ylabel('Frequency (Hz)')
+     
+    plt.subplot(142)
+    tfr_large = (dm.bin_pupil == 1)[dv][...]
+    tfr_small = (dm.bin_pupil == 0)[dv][...]
+    plt.title('b) Spontaneous Pupil Size (Large - Small)')
+    plt.imshow(tfr_large - tfr_small, aspect='auto', vmin=VMIN, vmax=VMAX,
+               cmap=CMAP, interpolation='bicubic')
+    plt.gca().get_yaxis().set_visible(False)
+    plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+    plt.xlabel('Time (ms)')
+    
+    plt.subplot(143)
+    tfr_bright = (dm.intensity == 255)[dv].mean
+    tfr_dim = (dm.intensity == 100)[dv].mean
+    plt.title('c) Stimulus Intensity (Bright - Dim)')
+    plt.imshow(tfr_bright - tfr_dim, aspect='auto', vmin=VMIN, vmax=VMAX,
+               cmap=CMAP, interpolation='bicubic')
+    plt.gca().get_yaxis().set_visible(False)
+    plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+    plt.xlabel('Time (ms)')
+    
+    plt.subplot(144)
+    tfr_attended = (dm.valid == 'yes')[dv].mean
+    tfr_unattended = (dm.valid == 'no')[dv].mean
+    plt.title('d) Covert Visual Attention (Attended - Unattended)')
+    plt.imshow(tfr_attended - tfr_unattended, aspect='auto', vmin=VMIN, vmax=VMAX,
+               cmap=CMAP, interpolation='bicubic')
+    plt.gca().get_yaxis().set_visible(False)
+    plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+    plt.xlabel('Time (ms)')

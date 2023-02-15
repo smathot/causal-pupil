@@ -35,7 +35,7 @@ Most of the analyses require 16GB of memory. To run the memoization script for m
 
 ### Checkpoint creation (optional)
 
-`create_checkpoint.py` creates a single merged datafile that can be used for further processing. This datafile should be stored in a subfolder called `checkpoints/`. You can bypass this step by downloading the checkpoint directly from the Google Drive.
+`create_checkpoint.py` creates a single merged datafile that can be used for further processing. This datafile should be stored in a subfolder called `checkpoints/`. You can bypass this step by downloading a checkpoint directly from the Google Drive.
 
 
 ### Analysis scripts

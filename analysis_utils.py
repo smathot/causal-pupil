@@ -51,9 +51,15 @@ MIDLINE_FRONTAL = 'Fz', 'FPz'
 LEFT_CP = 'CP1',
 RIGHT_CP = 'CP2',
 MIDLINE_CP = tuple()
-# Select a channel group for further processing
-CHANNEL_GROUP = 'CP'
-CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central', 'CP'
+# Pz, POz, Oz
+LEFT_OPM = 'Pz',
+RIGHT_OPM = 'POz',
+MIDLINE_OPM = 'Oz',
+# Select a channel group for further processing. The main analyses focus on the
+# the parietal group.
+CHANNEL_GROUP = 'parietal'
+CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central', 'CP',
+'occipital-parietal-midline'
 if CHANNEL_GROUP == 'parietal':
     LEFT_CHANNELS = LEFT_PARIETAL
     RIGHT_CHANNELS = RIGHT_PARIETAL
@@ -74,6 +80,10 @@ elif CHANNEL_GROUP == 'CP':
     LEFT_CHANNELS = LEFT_CP
     RIGHT_CHANNELS = RIGHT_CP
     MIDLINE_CHANNELS = MIDLINE_CP
+elif CHANNEL_GROUP == 'occipital-parietal-midline':
+    LEFT_CHANNELS = LEFT_OPM
+    RIGHT_CHANNELS = RIGHT_OPM
+    MIDLINE_CHANNELS = MIDLINE_OPM
 else:
     raise ValueError(f'Invalid channel group: {CHANNEL_GROUP}')
 ALL_CHANNELS = LEFT_CHANNELS + RIGHT_CHANNELS + MIDLINE_CHANNELS
@@ -413,7 +423,7 @@ def erp_plot(dm, dv='lat_erp', **kwargs):
     # plt.ylim(-4.5e-6, 1.5e-6)
 
 
-def tfr_plot(dv):
+def tfr_plot(dm, dv):
     plt.figure(figsize=(12, 4))
     plt.subplots_adjust(wspace=0)
     plt.subplot(141)
@@ -456,3 +466,22 @@ def tfr_plot(dv):
     plt.gca().get_yaxis().set_visible(False)
     plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
     plt.xlabel('Time (ms)')
+
+
+def merge_decoding_results(dm):
+    EPOCHS_KWARGS['reject_by_annotation'] = True
+    dm.braindecode_correct = -1
+    dm.braindecode_label = int
+    dm.braindecode_prediction = int
+    dm.braindecode_probabilities = SeriesColumn(depth=16)
+    dm = dm.subject_nr != {13, 15}
+    for subject_nr, sdm in ops.split(dm.subject_nr):
+        bdm = decode_subject(subject_nr)
+        for row in bdm:
+            tdm = sdm.count_trial_sequence == row.count_trial_sequence
+            dm.braindecode_correct[tdm] = row.braindecode_correct
+            dm.braindecode_label[tdm] = row.braindecode_label
+            dm.braindecode_prediction[tdm] = row.braindecode_prediction
+            dm.braindecode_probabilities[tdm] = row.braindecode_probabilities
+    dm = dm.braindecode_correct != -1
+    return dm

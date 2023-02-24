@@ -19,6 +19,8 @@ The main dependencies are `eeg_eyetracking_parser` and `datamatrix` (>= 1.0) whi
 pip install eeg_eyetracking_parser datamatrix
 ```
 
+See `environment.yaml` for a complete description of the Python environment used for the analysis.
+
 
 ## System requirements
 

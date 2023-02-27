@@ -47,7 +47,7 @@ for subject_nr, sdm in ops.split(dm.subject_nr):
     dm.inducer_effect[sdm] = d_pupil
 plt.axvline(0, color='black')
 plt.axhline(0, color='black')
-sns.regplot(pupil, erp)
+sns.regplot(x=pupil, y=erp)
 print(linregress(pupil, erp))
 dm = dm.inducer_effect > 0
 
@@ -85,7 +85,7 @@ plt.subplot(122)
 plt.title('b) Stability of inducer effect within blocks')
 dm.trial_in_block = (dm.trial - 16) - 96 * (dm.block - 1)
 sns.lineplot(x='trial_in_block', y='mean_pupil', hue='inducer',
-             data=cnv.to_pandas(dm), palette=['red', 'blue'])
+             data=cnv.to_pandas(dm), palette=['red', 'blue'], errorbar='se')
 plt.legend(title='Inducer')
 plt.xlim(1, 97)
 plt.ylim(4.5, 6.5)

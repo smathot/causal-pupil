@@ -29,20 +29,6 @@ dm = io.readbin(DATA_CHECKPOINT)
 
 
 """
-Merge decoding results
-"""
-EPOCHS_KWARGS['reject_by_annotation'] = True
-dm.braindecode_correct = int
-dm = dm.subject_nr != {13, 15}
-for subject_nr, sdm in ops.split(dm.subject_nr):
-    bdm = decode_subject(subject_nr)
-    for row in bdm:
-        tdm = sdm.count_trial_sequence == row.count_trial_sequence
-        dm.braindecode_correct[tdm] = row.braindecode_correct
-dm = dm.braindecode_correct == 1
-
-
-"""
 ## Time-frequency analyses
 
 Create time-frequency heatmaps for the target-evoked response. This is done
@@ -51,18 +37,6 @@ for all factors.
 tfr_plot(dm, 'tfr')
 plt.savefig(f'svg/target-tfr-{CHANNEL_GROUP}.svg')
 plt.savefig(f'svg/target-tfr-{CHANNEL_GROUP}.png', dpi=300)
-plt.show()
-tfr_plot(dm, 'lat_tfr')
-plt.savefig(f'svg/target-lat_tfr-{CHANNEL_GROUP}.svg')
-plt.savefig(f'svg/target-lat_tfr-{CHANNEL_GROUP}.png', dpi=300)
-plt.show()
-tfr_plot(dm, 'contra_tfr')
-plt.savefig(f'svg/target-contra_tfr-{CHANNEL_GROUP}.svg')
-plt.savefig(f'svg/target-contra_tfr-{CHANNEL_GROUP}.png', dpi=300)
-plt.show()
-tfr_plot(dm, 'ipsi_tfr')
-plt.savefig(f'svg/target-ipsi_tfr-{CHANNEL_GROUP}.svg')
-plt.savefig(f'svg/target-ipsi_tfr-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()
 
 

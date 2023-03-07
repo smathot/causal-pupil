@@ -53,17 +53,19 @@ plt.show()
 """
 Only lateralized ERPs in a horizontal arrangement of plots
 """
+YLIM = -4.2e-6, 1.2e-6
+
 plt.figure(figsize=(12, 4))
 plt.subplots_adjust(wspace=0, hspace=0)
 plt.suptitle(f'{CHANNEL_GROUP} channels')
 plt.subplot(141)
-erp_plot(dm, hue_factor='inducer', hues=['blue', 'red'])
+erp_plot(dm, hue_factor='inducer', hues=['blue', 'red'], ylim=YLIM)
 plt.subplot(142)
-erp_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'])
+erp_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'], ylim=YLIM)
 plt.subplot(143)
-erp_plot(dm, hue_factor='intensity', hues=['gray', 'black'])
+erp_plot(dm, hue_factor='intensity', hues=['gray', 'black'], ylim=YLIM)
 plt.subplot(144)
-erp_plot(dm, hue_factor='valid', hues=['red', 'green'])
+erp_plot(dm, hue_factor='valid', hues=['red', 'green'], ylim=YLIM)
 plt.savefig(f'svg/laterp-{CHANNEL_GROUP}.svg')
 plt.savefig(f'svg/laterp-{CHANNEL_GROUP}.png', dpi=300)
 plt.show()

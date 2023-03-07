@@ -201,7 +201,28 @@ plt.yticks(range(N_CONDITIONS), LABELS)
 #   Text(0, 14, '14:red:1:255:no'),
 #   Text(0, 15, '15:red:1:255:yes')])
 # ![](/home/sebastiaan/.opensesame/image_annotations/c3f629f5c7824d69bd27bb1616ad39f3.png)
-# 
+#
+
+
+"""
+## Control analysis: cross-decoding sanity check
+
+
+"""
+query1 = 'practice == "no" and intensity == 100'
+query2 = 'practice == "no" and intensity == 255'
+acc = [blocked_decode_subject(subject_nr, 'valid', query1, query2)
+       for subject_nr in SUBJECTS]
+t, p = ttest_1samp(acc, popmean=.5)
+print('Control cross-decoding of validity')
+print(f'M = {np.mean(acc1):.2f}, t = {t:.4f}, p = {p:.4f}')
+
+
+# % output
+# Control cross-decoding of validity
+# M = 0.58, t = 4.4980, p = 0.0001
+#
+
 """
 ## Control analysis: Account for temporal proximity in decoding of inducer
 

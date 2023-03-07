@@ -414,13 +414,14 @@ def pupil_plot(dm, dv='pupil_target', **kwargs):
     plt.ylabel('Baseline-corrected pupil size (mm)')
 
 
-def erp_plot(dm, dv='lat_erp', **kwargs):
+def erp_plot(dm, dv='lat_erp', ylim=None, **kwargs):
     tst.plot(dm, dv=dv, **kwargs)
     plt.xticks(np.arange(25, 150, 25), np.arange(0, 500, 100))
     plt.axvline(25, color='black', linestyle=':')
     plt.axhline(0, color='black', linestyle=':')
     plt.xlabel('Time (ms)')
-    # plt.ylim(-4.5e-6, 1.5e-6)
+    if ylim:
+        plt.ylim(*ylim)
 
 
 def tfr_plot(dm, dv):

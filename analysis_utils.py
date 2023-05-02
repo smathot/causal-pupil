@@ -144,6 +144,18 @@ DATA_CHECKPOINT = f'checkpoints/15022023-{CHANNEL_GROUP}.dm'
 
 
 def read_subject(subject_nr):
+    """A simple wrapper function that calls eet.read_subject() with the correct
+    parameters.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    
+    Returns
+    -------
+    tuple
+        A (raw, events, metadata) tuple
+    """
     return eet.read_subject(subject_nr=subject_nr,
                             saccade_annotation='BADS_SACCADE',
                             min_sacc_size=128)
@@ -151,6 +163,24 @@ def read_subject(subject_nr):
 
 def get_tgt_epoch(raw, events, metadata, channels=None, tmin=-.1, tmax=.5,
                   baseline=(None, 0)):
+    """A simple wrapper function that uses eet.autoreject_epochs() to get
+    an Epochs object around the target onset.
+    
+    Parameters
+    ----------
+    raw: Raw
+    events: tuple
+    metadata: DataFrame
+    channels: list or None, optional
+        A list of channel indices or None to select all channels
+    tmin: float, optional
+    tmax: float, optional
+    baseline: tuple, optional
+    
+    Returns
+    -------
+    Epochs
+    """
     return eet.autoreject_epochs(
         raw, eet.epoch_trigger(events, TARGET_TRIGGER), tmin=tmin, tmax=tmax,
         metadata=metadata, picks=channels, baseline=baseline,
@@ -158,12 +188,47 @@ def get_tgt_epoch(raw, events, metadata, channels=None, tmin=-.1, tmax=.5,
     
     
 def get_fix_epoch(raw, events, metadata, channels=None):
+    """A simple wrapper function that uses eet.autoreject_epochs() to get
+    an Epochs object around the fixation onset.
+    
+    Parameters
+    ----------
+    raw: Raw
+    events: tuple
+    metadata: DataFrame
+    channels: list or None, optional
+        A list of channel indices or None to select all channels
+    
+    Returns
+    -------
+    Epochs
+    """
     return eet.autoreject_epochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=-.5, tmax=2.5,
         metadata=metadata, picks=channels, ar_kwargs=dict(n_jobs=8))
     
 
 def get_morlet(epochs, freqs, crop=(0, 2), decim=8, n_cycles=2):
+    """A simple wrapper function that uses tfr_morlet() to extract
+    time-frequency data.
+    
+    Parameters
+    ----------
+    epochs: Epochs
+    freqs: array
+        An array of frequencies
+    crop: tuple, optional
+        A time window to crop after extracting the time-frequency data to
+        reduce edge artifacts.
+    decim: int, optional
+        Downsampling factor to reduce memory consumption
+    n_cycles: int, optional
+        The number of cycles of the morlet wavelet
+        
+    Returns
+    -------
+    EpochsTFR
+    """
     morlet = tfr_morlet(epochs, freqs=freqs, n_cycles=n_cycles, n_jobs=-1,
                         return_itc=False, use_fft=True, average=False,
                         decim=decim,
@@ -173,6 +238,19 @@ def get_morlet(epochs, freqs, crop=(0, 2), decim=8, n_cycles=2):
 
 
 def subject_data(subject_nr):
+    """Performs preprocessing for a single participant. This involves basic
+    EEG preprocessing and subsequent epoching and extraction of TFR data. The
+    result is a single DataMatrix that contains all information for final
+    analysis.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    
+    Returns
+    -------
+    DataMatrix
+    """
     print(f'Processing subject {subject_nr}')
     raw, events, metadata = read_subject(subject_nr)
     raw['PupilSize'] = area_to_mm(raw['PupilSize'][0])
@@ -205,10 +283,32 @@ def subject_data(subject_nr):
 
 @fnc.memoize(persistent=True, key='merged-data')
 def get_merged_data():
+    """Merges data for all participants into a single DataMatrix. Uses
+    multiprocessing for performance.
+    
+    Returns
+    -------
+    DataMatrix
+    """
     return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=3)
 
 
 def add_bin_pupil(raw, events, metadata):
+    """Adds bin pupil to the metadata. This is a patch to allow decoding to
+    take bin pupil as a decoding factor into account.
+    
+    Parameters
+    ----------
+    raw: Raw
+    events: tuple
+    metadata: DataFrame
+    
+    Returns
+    -------
+    tuple
+        A (raw, events, metadata) tuple where bin_pupil has been added as a
+        column to metadata.
+    """
     # This adds the bin_pupil pseudo-factor to the data. This requires that
     # this has been generated already by `analyze.py`.
     dm = io.readtxt('output/bin-pupil.csv')
@@ -221,32 +321,79 @@ def add_bin_pupil(raw, events, metadata):
 
 
 def decode_subject(subject_nr):
+    """A wrapper function around bdu.decode_subject() that performs overall
+    decoding for one subject.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    
+    Returns
+    -------
+    DataMatrix
+        See bdu.decode_subject()
+    """
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-         factors=FACTORS, epochs_kwargs=EPOCHS_KWARGS,
-         trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-         n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+    return bdu.decode_subject(
+        read_subject_kwargs=read_subject_kwargs, factors=FACTORS,
+        epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
+        window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
 
 
 def crossdecode_subject(subject_nr, from_factor, to_factor):
+    """A wrapper function around bdu.decode_subject() that performs
+    cross-decoding for one subject.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    from_factor: str
+        The factor to train on
+    to_factor: str
+        The factor to test on
+    
+    Returns
+    -------
+    DataMatrix
+        See bdu.decode_subject()
+    """
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
     if 'bin_pupil' in (from_factor, to_factor):
-        return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=from_factor, crossdecode_factors=to_factor,
-            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
-            window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
-    return bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-         factors=from_factor, crossdecode_factors=to_factor,
-         epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
-         window_size=200, n_fold=4, epochs=4)
+        return bdu.decode_subject(
+            read_subject_kwargs=read_subject_kwargs, factors=from_factor,
+            crossdecode_factors=to_factor, epochs_kwargs=EPOCHS_KWARGS,
+            trigger=TARGET_TRIGGER, window_stride=1, window_size=200, n_fold=4,
+            epochs=4, patch_data_func=add_bin_pupil)
+    return bdu.decode_subject(
+        read_subject_kwargs=read_subject_kwargs, factors=from_factor,
+        crossdecode_factors=to_factor, epochs_kwargs=EPOCHS_KWARGS,
+        trigger=TARGET_TRIGGER, window_stride=1, window_size=200, n_fold=4,
+        epochs=4)
 
 
 @fnc.memoize(persistent=True)
 def blocked_decode_subject(subject_nr, factor, query1, query2):
+    """Decodes a factor for a single subject, using two different queries to
+    separate the training and testing data.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    factor: str
+    query1: str
+        A pandas-style query to select the training set
+    query2: str
+        A pandas-style query to select the testing set
+    
+    Returns
+    -------
+    float
+        Decoding accuracy
+    """
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
@@ -264,25 +411,21 @@ def blocked_decode_subject(subject_nr, factor, query1, query2):
     return np.mean([p == t for p, t in zip(resized_pred, y_true)])
 
 
-def test_confusion(dm, weights):
-    scores = []
-    for subject_nr, sdm in ops.split(dm.subject_nr):
-        cm_prob = bdu.build_confusion_matrix(sdm.braindecode_label,
-                                             sdm.braindecode_probabilities)
-        score = 0
-        for weight, f1, f2 in weights:
-            score += weight * (cm_prob[LABELS.index(f1), LABELS.index(f2)] +
-                              cm_prob[LABELS.index(f2), LABELS.index(f1)])
-        scores.append(score)
-    return scores
-
-
 def statsplot(rm):
+    """A simple wrapper function that plots statistical values as a function of
+    time and factors.
+    
+    Parameters
+    ----------
+    rm: DataMatrix
+        A DataMatrix with statistical results as returned by time_series_test
+        functions.
+    """
     rm = rm[:]
     rm.sign = SeriesColumn(depth=rm.p.depth)
     colors = ['red', 'green', 'blue', 'orange']
     for y, row in enumerate(rm[1:]):
-        for linewidth, alpha in [(1, .05), (2, .01), (4, .005), (8, .001),]:
+        for linewidth, alpha in [(1, .05), (2, .01), (4, .005), (8, .001)]:
             row.sign[row.p >= alpha] = np.nan
             row.sign[row.p < alpha] = y
             plt.plot(row.sign, '-', label=f'{row.effect}, p < {alpha}',
@@ -291,13 +434,31 @@ def statsplot(rm):
 
 
 def select_ica(raw, events, metadata, exclude_component=0):
+    """A helper function that excludes (rather than selects, as the name 
+    suggests) an independent component from the signal.
     
+    Parameters
+    ----------
+    raw: Raw
+    events: tuple
+    metadata: DataFrame
+    exclude_component: int, optional
+        The index of the excluded independent component
+        
+    Returns
+    -------
+    tuple
+        A (raw, events, metadata) tuple where the independent component has 
+        been excluded from the `raw` object.
+    """
     global weights_dict
     raw, events, metadata = add_bin_pupil(raw, events, metadata)
     print(f'running ica to exclude component {exclude_component}')
+    
     @fnc.memoize(persistent=True)
     def run_ica(raw):
         return epp.run_ica(raw)
+        
     # run_ica.clear()
     raw.info['bads'] = []
     ica = run_ica(raw)
@@ -313,30 +474,65 @@ def select_ica(raw, events, metadata, exclude_component=0):
 
 @fnc.memoize(persistent=True)
 def ica_perturbation_decode(subject_nr, factor):
+    """Performs the ICA perturbation analysis.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    factor: str
+    
+    Returns
+    -------
+    tuple
+        The first element of the tuple is a DataMatrix with the regular
+        decoding results. The second element is a dict with independent
+        component indices as keys and (dm, weights_dict) tuples as values.
+        Here, dm is the DataMatrix with the decoding results after excluding
+        the independent component, and weights_dict is a mapping with channel
+        names as keys and weights (loading of the channel of the independent
+        component) as values.
+    """
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+    fdm = bdu.decode_subject(
+        read_subject_kwargs=read_subject_kwargs, factors=factor,
+        epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
+        window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
     perturbation_results = {}
     for exclude_component in range(N_CHANNELS):
         bdu.decode_subject.clear()
-        dm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-            n_fold=4, epochs=4,
+        dm = bdu.decode_subject(
+            read_subject_kwargs=read_subject_kwargs, factors=factor,
+            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER,
+            window_stride=1, window_size=200, n_fold=4, epochs=4,
             patch_data_func=lambda raw, events, metadata: select_ica(
                     raw, events, metadata, exclude_component))
         perturbation_results[exclude_component] = dm, weights_dict
-        print(f'perturbation accuracy({exclude_component}): {dm.braindecode_correct.mean}')
+        print(f'perturbation accuracy({exclude_component}): '
+              f'{dm.braindecode_correct.mean}')
     return fdm, perturbation_results
 
 
 def notch_filter(raw, events, metadata, freq):
+    """A helper function that excludes a frequency from the signal using a
+    notch filter.
     
+    Parameters
+    ----------
+    raw: Raw
+    events: tuple
+    metadata: DataFrame
+    freq: float
+        The frequency to remove.
+        
+    Returns
+    -------
+    tuple
+        A (raw, events, metadata) tuple where the frequency has been removed
+        from the `raw` object using a notch filter.
+    """
     global weights_dict
     raw, events, metadata = add_bin_pupil(raw, events, metadata)
     width = np.exp(np.log(freq / 4))
@@ -347,21 +543,36 @@ def notch_filter(raw, events, metadata, freq):
 
 @fnc.memoize(persistent=True)
 def freq_perturbation_decode(subject_nr, factor):
+    """Performs the frequency perturbation analysis.
+    
+    Parameters
+    ----------
+    subject_nr: int
+    factor: str
+    
+    Returns
+    -------
+    tuple
+        The first element of the tuple is a DataMatrix with the regular
+        decoding results. The second element is a dict with frequencies
+        as keys and the DataMatrix objects with the decoding results after 
+        excluding the frequencies as values.
+    """
     read_subject_kwargs = dict(subject_nr=subject_nr,
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
-    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
+    fdm = bdu.decode_subject(
+        read_subject_kwargs=read_subject_kwargs, factors=factor,
+        epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
+        window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
     print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
     perturbation_results = {}
     for freq in NOTCH_FREQS:
         bdu.decode_subject.clear()
-        dm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-            trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-            n_fold=4, epochs=4,
+        dm = bdu.decode_subject(
+            read_subject_kwargs=read_subject_kwargs, factors=factor,
+            epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER,
+            window_stride=1, window_size=200, n_fold=4, epochs=4,
             patch_data_func=lambda raw, events, metadata: notch_filter(
                     raw, events, metadata, freq))
         perturbation_results[freq] = dm
@@ -369,36 +580,30 @@ def freq_perturbation_decode(subject_nr, factor):
     return fdm, perturbation_results
 
 
-@fnc.memoize(persistent=True)
-def time_perturbation_decode(subject_nr, factor):
-    read_subject_kwargs = dict(subject_nr=subject_nr,
-                               saccade_annotation='BADS_SACCADE',
-                               min_sacc_size=128)
-    fdm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-        factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-        trigger=TARGET_TRIGGER, window_stride=1, window_size=200,
-        n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
-    print(f'full-data accuracy: {fdm.braindecode_correct.mean}')
-    perturbation_results = {}
-    for tmin, tmax in PERTURB_TIMES:
-        epochs_kwargs = EPOCHS_KWARGS.copy()
-        epochs_kwargs['tmin'] = tmin
-        epochs_kwargs['tmax'] = tmax
-        bdu.decode_subject.clear()
-        dm = bdu.decode_subject(read_subject_kwargs=read_subject_kwargs,
-            factors=factor, epochs_kwargs=EPOCHS_KWARGS,
-            trigger=TARGET_TRIGGER, window_stride=1, window_size=130,
-            n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
-        perturbation_results[tmin] = dm
-        print(f'perturbation accuracy({tmin}-{tmax}): {dm.braindecode_correct.mean}')
-    return fdm, perturbation_results
-
-
 def area_to_mm(au):
+    """Converts in arbitrary units to millimeters of diameter. This is specific
+    to the recording set-up.
+    
+    Parameters
+    ----------
+    au: float
+    
+    Returns
+    -------
+    float
+    """
     return -0.9904 + 0.1275 * au ** .5
 
 
 def pupil_plot(dm, dv='pupil_target', **kwargs):
+    """A simple wrapper function that plots pupil size over time.
+    
+    Parameters
+    ----------
+    dm: DataMatrix
+    dv: str, optional
+    **kwargs: dict, optional
+    """
     tst.plot(dm, dv=dv, legend_kwargs={'loc': 'lower left'},
              **kwargs)
     x = np.linspace(12, 262, 6)
@@ -415,6 +620,15 @@ def pupil_plot(dm, dv='pupil_target', **kwargs):
 
 
 def erp_plot(dm, dv='lat_erp', ylim=None, **kwargs):
+    """A simple wrapper function that plots ERPs.
+    
+    Parameters
+    ----------
+    dm: DataMatrix
+    dv: str, optional
+    ylim: float or None, optional
+    **kwargs: dict, optional
+    """
     tst.plot(dm, dv=dv, **kwargs)
     plt.xticks(np.arange(25, 150, 25), np.arange(0, 500, 100))
     plt.axvline(25, color='black', linestyle=':')
@@ -425,6 +639,13 @@ def erp_plot(dm, dv='lat_erp', ylim=None, **kwargs):
 
 
 def tfr_plot(dm, dv):
+    """A simple wrapper function that creates a multipanel TFR plot.
+    
+    Parameters
+    ----------
+    dm: DataMatrix
+    dv: str, optional
+    """
     plt.figure(figsize=(12, 4))
     plt.subplots_adjust(wspace=0)
     plt.subplot(141)
@@ -462,27 +683,8 @@ def tfr_plot(dm, dv):
     tfr_attended = (dm.valid == 'yes')[dv].mean
     tfr_unattended = (dm.valid == 'no')[dv].mean
     plt.title('d) Covert Visual Attention (Attended - Unattended)')
-    plt.imshow(tfr_attended - tfr_unattended, aspect='auto', vmin=VMIN, vmax=VMAX,
-               cmap=CMAP, interpolation='bicubic')
+    plt.imshow(tfr_attended - tfr_unattended, aspect='auto', vmin=VMIN,
+               vmax=VMAX, cmap=CMAP, interpolation='bicubic')
     plt.gca().get_yaxis().set_visible(False)
     plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
     plt.xlabel('Time (ms)')
-
-
-def merge_decoding_results(dm):
-    EPOCHS_KWARGS['reject_by_annotation'] = True
-    dm.braindecode_correct = -1
-    dm.braindecode_label = int
-    dm.braindecode_prediction = int
-    dm.braindecode_probabilities = SeriesColumn(depth=16)
-    dm = dm.subject_nr != {13, 15}
-    for subject_nr, sdm in ops.split(dm.subject_nr):
-        bdm = decode_subject(subject_nr)
-        for row in bdm:
-            tdm = sdm.count_trial_sequence == row.count_trial_sequence
-            dm.braindecode_correct[tdm] = row.braindecode_correct
-            dm.braindecode_label[tdm] = row.braindecode_label
-            dm.braindecode_prediction[tdm] = row.braindecode_prediction
-            dm.braindecode_probabilities[tdm] = row.braindecode_probabilities
-    dm = dm.braindecode_correct != -1
-    return dm

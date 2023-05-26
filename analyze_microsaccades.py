@@ -108,9 +108,9 @@ dm.ord_inducer = ops.replace(dm.inducer, {'blue': -1, 'red': 1})
 dm.ord_bin_pupil = ops.replace(dm.bin_pupil, {0: -1, 1: 1})
 dm.ord_intensity = ops.replace(dm.intensity, {100: -1, 255: 1})
 dm.ord_valid = ops.replace(dm.valid, {'no': -1, 'yes': 1})
-pupil_results = tst.find(
+microsaccade_results = tst.find(
     dm, 'saccfreq_4 ~ ord_inducer + ord_bin_pupil + ord_intensity + ord_valid',
     re_formula='~ ord_inducer + ord_bin_pupil + ord_intensity + ord_valid',
     groups='subject_nr', winlen=20, suppress_convergence_warnings=True)
 Path('output/microsaccade-results.txt').write_text(
-    tst.summarize(pupil_results))
+    tst.summarize(pupil_microsaccade))

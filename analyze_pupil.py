@@ -14,6 +14,7 @@ from datamatrix import io
 import seaborn as sns
 import numpy as np
 import time_series_test as tst
+from pathlib import Path
 from analysis_utils import *
 
 
@@ -35,14 +36,17 @@ plt.title('a) Induced Pupil size')
 pupil_plot(dm, hue_factor='inducer', hues=['blue', 'red'])
 plt.subplot(142)
 plt.title('b) Spontaneous Pupil size')
+plt.axvspan(138 + 15, 138 + 20, color='black', alpha=.1)
 pupil_plot(dm, hue_factor='bin_pupil', hues=['purple', 'green'])
 plt.gca().get_yaxis().set_visible(False)
 plt.subplot(143)
 plt.title('c) Stimulus intensity')
+plt.axvspan(138 + 20, 138 + 25, color='black', alpha=.1)
 pupil_plot(dm, hue_factor='intensity', hues=['gray', 'black'])
 plt.gca().get_yaxis().set_visible(False)
 plt.subplot(144)
 plt.title('d) Covert Visual Attention')
+plt.axvspan(138 + 30, 138 + 35, color='black', alpha=.1)
 pupil_plot(dm, hue_factor='valid', hues=['red', 'green'])
 plt.gca().get_yaxis().set_visible(False)
 plt.savefig('svg/pupil-target-evoked.svg')
@@ -67,3 +71,5 @@ pupil_results = tst.find(dm,
 print(tst.summarize(pupil_results))
 tst.plot(dm, dv='pupil_window', hue_factor='ord_inducer',
          linestyle_factor='ord_intensity')
+Path('output/pupil-constriction-results.txt').write_text(
+    tst.summarize(pupil_results))

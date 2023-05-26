@@ -34,6 +34,7 @@ def itc(epochs):
 
 
 dm = DataMatrix(length=len(SUBJECTS))
+dm.itc = MultiDimensionalColumn(shape=(26, 32))
 dm.inducer = MultiDimensionalColumn(shape=(26, 32))
 dm.bin_pupil = MultiDimensionalColumn(shape=(26, 32))
 dm.intensity = MultiDimensionalColumn(shape=(26, 32))
@@ -43,6 +44,7 @@ for row, subject_nr in zip(dm, SUBJECTS):
     raw, events, metadata = add_bin_pupil(*read_subject(subject_nr))
     epochs = get_tgt_epoch(raw, events, metadata, baseline=None, tmin=-.1,
                            tmax=1, channels=ALL_CHANNELS)
+    row.itc = itc(epochs)
     row.inducer = \
         itc(epochs['inducer == "red"']) - itc(epochs['inducer == "blue"'])
     row.bin_pupil = \
@@ -52,6 +54,19 @@ for row, subject_nr in zip(dm, SUBJECTS):
     row.valid = \
         itc(epochs['valid == "yes"']) - itc(epochs['valid == "no"'])
 io.writebin(dm, 'output/intertrial-coherence.dm')
+
+
+"""
+Overall intertrial coherence
+"""
+plt.imshow(dm.itc.mean, aspect='auto', cmap=CMAP, interpolation='bicubic')
+plt.yticks(Y_FREQS, FULL_FREQS[Y_FREQS])
+plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+plt.xlabel('Time (ms)')
+plt.ylabel('Frequency (Hz)')
+plt.savefig(f'svg/overall-itc-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/overall-itc-{CHANNEL_GROUP}.png', dpi=300)
+plt.show()
 
 
 """

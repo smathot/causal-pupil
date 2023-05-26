@@ -29,6 +29,19 @@ dm = io.readbin(DATA_CHECKPOINT)
 
 
 """
+## Overall power plot
+"""
+plt.imshow(dm.tfr[...], cmap=CMAP, interpolation='bicubic')
+plt.yticks(Y_FREQS, FULL_FREQS[Y_FREQS])
+plt.xticks(np.arange(0, 31, 6.25), np.arange(0, 499, 100))
+plt.xlabel('Time (ms)')
+plt.ylabel('Frequency (Hz)')
+plt.savefig(f'svg/overall-tfr-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/overall-tfr-{CHANNEL_GROUP}.png', dpi=300)
+plt.show()
+
+
+"""
 ## Time-frequency analyses
 
 Create time-frequency heatmaps for the target-evoked response. This is done

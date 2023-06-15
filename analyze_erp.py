@@ -10,7 +10,9 @@ This script belongs to the following manuscript:
 ## Imports and constants
 """
 from matplotlib import pyplot as plt
-from datamatrix import io
+from datamatrix import io, series as srs
+import seaborn as sns
+from statsmodels.formula.api import mixedlm
 from analysis_utils import *
 
 
@@ -113,3 +115,64 @@ for iv in FACTORS:
         groups='subject_nr', winlen=4, suppress_convergence_warnings=True,
         iterations=1000)
     Path(f'output/lmer-laterp-{iv}.txt').write_text(str(result))
+
+
+"""
+## Non-linear effects of spontaneous pupil size
+
+Calculate more fine-grained pupil bins and focus on the ERP during the time
+period located by the cluster-based permutation test.
+"""
+dm.mean_pupil = srs.reduce(dm.pupil_fix)
+dm.z_pupil = ''
+dm.bin5_pupil = ''
+for subject_nr, sdm in ops.split(dm.subject_nr):
+    dm.z_pupil[sdm] = ops.z(sdm.mean_pupil)
+    sdm_red, sdm_blue = ops.split(sdm.inducer, 'red', 'blue')
+    for binnr, bdm in enumerate(ops.bin_split(sdm_red.mean_pupil, 5)):
+        dm.bin5_pupil[bdm] = binnr
+    for binnr, bdm in enumerate(ops.bin_split(sdm_blue.mean_pupil, 5)):
+        dm.bin5_pupil[bdm] = binnr
+dm.bin_pupil_roi = dm.lat_erp[:, 25 + 64:25 + 75][:, ...]
+
+
+"""
+Visualize non-linear effects
+"""
+plt.figure(figsize=(8, 4))
+plt.subplots_adjust(wspace=.3)
+plt.subplot(121)
+plt.title('a) Full time course')
+plt.axvspan(25 + 64, 25 + 75, alpha=.1, color='black')
+erp_plot(dm, hue_factor='bin5_pupil',
+         hues=['#c8e6c9', '#a5d6a7', '#66bb6a', '#43a047', '#2e7d32'])
+plt.ylabel('Contralateral - Ipsilateral (µV)')
+plt.subplot(122)
+plt.title('b) Mean of 250 - 300 ms window')
+x = []
+xerr = []
+y = []
+yerr = []
+for bin5_pupil, bdm in ops.split(dm.bin5_pupil):
+    x.append(bdm.mean_pupil.mean)
+    xerr.append(bdm.mean_pupil.std / np.sqrt(len(bdm)))
+    y.append(bdm.bin_pupil_roi.mean)
+    yerr.append(bdm.bin_pupil_roi.std / np.sqrt(len(bdm)))
+plt.errorbar(x, y, yerr, xerr, 'o-')
+plt.xlabel('Pupil size (mm)')
+plt.ylabel('Contralateral - Ipsilateral (µV)')
+plt.savefig(f'svg/nonlinear-erp-{CHANNEL_GROUP}.svg')
+plt.savefig(f'svg/nonlinear-erp-{CHANNEL_GROUP}.png', dpi=300)
+plt.show()
+
+
+"""
+Statically analyze non-linear effects
+"""
+dm.z_pupil2 = dm.z_pupil ** 2
+dm.z_pupil3 = dm.z_pupil ** 3
+valid_dm = dm.bin_pupil_roi != np.nan
+valid_dm = valid_dm.mean_pupil != np.nan
+model = mixedlm(formula='bin_pupil_roi ~ z_pupil + z_pupil2',
+                data=valid_dm, groups='subject_nr').fit()
+print(model.summary())

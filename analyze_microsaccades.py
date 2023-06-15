@@ -11,9 +11,10 @@ This script belongs to the following manuscript:
 """
 from datamatrix import io, operations as ops
 import time_series_test as tst
+import seaborn as sns
 from pycrosaccade import microsaccades
 from eyelinkparser import parse, defaulttraceprocessor
-from datamatrix import functional as fnc
+from datamatrix import functional as fnc, series as srs
 from pathlib import Path
 from analysis_utils import *
 
@@ -50,7 +51,7 @@ def get_data():
     return dm
 
 
-get_data.clear()  # Uncomment to clear memoization cache
+# get_data.clear()  # Uncomment to clear memoization cache
 dm = get_data()
 
 
@@ -113,4 +114,11 @@ microsaccade_results = tst.find(
     re_formula='~ ord_inducer + ord_bin_pupil + ord_intensity + ord_valid',
     groups='subject_nr', winlen=20, suppress_convergence_warnings=True)
 Path('output/microsaccade-results.txt').write_text(
-    tst.summarize(pupil_microsaccade))
+    tst.summarize(microsaccade_results))
+
+
+"""
+Analyze blink rate
+"""
+dm.nblink = 9 - srs.nancount(dm.blinkstlist_4)
+sns.pointplot(y='nblink', hue='inducer', x='bin_pupil', data=dm)

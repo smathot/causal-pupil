@@ -10,7 +10,7 @@ This script belongs to the following manuscript:
 ## Imports and constants
 """
 from matplotlib import pyplot as plt
-from datamatrix import io
+from datamatrix import io, series as srs, operations as ops
 import seaborn as sns
 import numpy as np
 import time_series_test as tst
@@ -23,6 +23,16 @@ from analysis_utils import *
 """
 dm = io.readbin(DATA_CHECKPOINT)
 
+
+"""
+## Check missing data
+"""
+dm.pupil_missing = 0
+dm.pupil_missing[srs.nancount(dm.pupil_target) == dm.pupil_target.depth] = 1
+for subject_nr, sdm in ops.split(dm.subject_nr):
+    print(f'{subject_nr}: missing data = {sdm.pupil_missing.mean}')
+for bin_pupil, bdm in ops.split(dm.bin_pupil):
+    print(f'{bin_pupil}: missing data = {bdm.pupil_missing.mean}')
 
 """
 ## Pupil analysis

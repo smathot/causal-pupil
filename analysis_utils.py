@@ -10,6 +10,7 @@ This module contains various constants and functions that are used in the main
 analysis scripts.
 """
 import random
+import sys
 import multiprocessing as mp
 import mne; mne.set_log_level(False)
 import eeg_eyetracking_parser as eet
@@ -57,9 +58,15 @@ RIGHT_OPM = 'POz',
 MIDLINE_OPM = 'Oz',
 # Select a channel group for further processing. The main analyses focus on the
 # the parietal group.
-CHANNEL_GROUP = 'parietal'
-CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central', 'CP',
-'occipital-parietal-midline'
+CHANNEL_GROUPS = 'parietal', 'occipital', 'frontal', 'central', 'CP', \
+    'occipital-parietal-midline'
+# Allow the channel group to be specified on the command line
+for arg in sys.argv:
+    if arg in CHANNEL_GROUPS:
+        CHANNEL_GROUP = arg
+        break
+else:
+    CHANNEL_GROUP = 'parietal'
 if CHANNEL_GROUP == 'parietal':
     LEFT_CHANNELS = LEFT_PARIETAL
     RIGHT_CHANNELS = RIGHT_PARIETAL
@@ -140,7 +147,7 @@ CMAP = 'coolwarm'
 plt.style.use('default')
 mpl.rcParams['font.family'] = 'Roboto Condensed'
 # DATA_CHECKPOINT = 'checkpoints/18012023.dm'
-DATA_CHECKPOINT = f'checkpoints/15022023-{CHANNEL_GROUP}.dm'
+DATA_CHECKPOINT = f'checkpoints/19072023-{CHANNEL_GROUP}.dm'
 
 
 def read_subject(subject_nr):
@@ -237,6 +244,27 @@ def get_morlet(epochs, freqs, crop=(0, 2), decim=8, n_cycles=2):
     return morlet
 
 
+def z_by_freq(col):
+    """Performs z-scoring across trials, channels, and time points but 
+    separately for each frequency.
+    
+    Parameters
+    ----------
+    col: MultiDimensionalColumn
+    
+    Returns
+    -------
+    MultiDimensionalColumn
+    """
+    zcol = col[:]
+    for i in range(zcol.shape[2]):
+        zcol._seq[:, :, i] = (
+            (zcol._seq[:, :, i] - np.nanmean(zcol._seq[:, :, i]))
+            / np.nanstd(zcol._seq[:, :, i])
+        )
+    return zcol
+
+
 def subject_data(subject_nr):
     """Performs preprocessing for a single participant. This involves basic
     EEG preprocessing and subsequent epoching and extraction of TFR data. The
@@ -262,12 +290,12 @@ def subject_data(subject_nr):
         get_tgt_epoch(raw, events, metadata, baseline=None, tmax=1),
         FULL_FREQS, crop=(0, .5), decim=4)
     dm.tgt_tfr = cnv.from_mne_tfr(tgt_tfr)
-    dm.tgt_tfr = ops.z(dm.tgt_tfr)
+    dm.tgt_tfr = z_by_freq(dm.tgt_tfr)
     fix_epoch = get_fix_epoch(raw, events, metadata)
     fix_tfr = get_morlet(fix_epoch, FULL_FREQS)
     dm.fix_erp = cnv.from_mne_epochs(fix_epoch)
     dm.fix_tfr = cnv.from_mne_tfr(fix_tfr)
-    dm.fix_tfr = ops.z(dm.fix_tfr)
+    dm.fix_tfr = z_by_freq(dm.fix_tfr)
     print('- pupils')
     pupil_fix = eet.PupilEpochs(
         raw, eet.epoch_trigger(events, FIXATION_TRIGGER), tmin=0, tmax=2,
@@ -290,7 +318,7 @@ def get_merged_data():
     -------
     DataMatrix
     """
-    return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=3)
+    return fnc.stack_multiprocess(subject_data, SUBJECTS, processes=10)
 
 
 def add_bin_pupil(raw, events, metadata):

@@ -22,7 +22,7 @@ from pathlib import Path
 Read the merged data as one large datamatrix, exclude practice, and auto-type
 the columns for performance.
 """
-get_merged_data.clear()  # Uncomment to re-merge data
+# get_merged_data.clear()  # Uncomment to re-merge data
 print('Reading merged data from function/ memoization')
 dm = get_merged_data()
 print('Excluding practice')
@@ -65,6 +65,8 @@ things down.)
 """
 del dm.tgt_erp
 del dm.tgt_tfr
+del dm.fix_erp
+del dm.fix_tfr
 
 
 """

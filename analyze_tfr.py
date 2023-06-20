@@ -60,6 +60,10 @@ Focus on frequency bands
 dm.theta = dm.tfr[:, :4][:, ...]
 dm.alpha = dm.tfr[:, 4:8][:, ...]
 dm.beta = dm.tfr[:, 8:][:, ...]
+# Delete unused columns to reduce memory consumption
+for name, col in dm.columns:
+    if name not in FACTORS + ['theta', 'alpha', 'beta', 'subject_nr']:
+        del dm[col]
 
 # plt.figure(figsize=(12, 4))
 # plt.suptitle('Theta power')
@@ -113,7 +117,7 @@ def permutation_test(dm, dv, iv):
         iterations=1000)
     Path(f'output/tfr-{dv}-{iv}.txt').write_text(str(result))
     
-    
+
 args = []
 for dv, iv in it.product(['theta', 'alpha', 'beta'], FACTORS):
     args.append((dm, dv, iv))

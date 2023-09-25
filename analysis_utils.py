@@ -348,13 +348,14 @@ def add_bin_pupil(raw, events, metadata):
     return raw, events, metadata
 
 
-def decode_subject(subject_nr):
+def decode_subject(subject_nr, factor=FACTORS):
     """A wrapper function around bdu.decode_subject() that performs overall
     decoding for one subject.
     
     Parameters
     ----------
     subject_nr: int
+    factor: str or list, optional
     
     Returns
     -------
@@ -365,7 +366,7 @@ def decode_subject(subject_nr):
                                saccade_annotation='BADS_SACCADE',
                                min_sacc_size=128)
     return bdu.decode_subject(
-        read_subject_kwargs=read_subject_kwargs, factors=FACTORS,
+        read_subject_kwargs=read_subject_kwargs, factors=factor,
         epochs_kwargs=EPOCHS_KWARGS, trigger=TARGET_TRIGGER, window_stride=1,
         window_size=200, n_fold=4, epochs=4, patch_data_func=add_bin_pupil)
 
